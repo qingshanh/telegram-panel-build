@@ -4,18 +4,18 @@
 @inject ISnackbar Snackbar
 @inject ILogger<BotCheckinAssistantPage> Logger
 
-<PageTitle>Bot Check-in Assistant</PageTitle>
+<PageTitle>机器人签到助手</PageTitle>
 
-<MudText Typo="Typo.h4" Class="mb-4 tp-page-title">Bot Check-in Assistant</MudText>
+<MudText Typo="Typo.h4" Class="mb-4 tp-page-title">机器人签到助手</MudText>
 
 <MudPaper Class="pa-4" Elevation="0" Outlined="true">
     <MudStack Spacing="2">
         <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
-            Send scripted messages to one bot with multiple accounts. After each round, review replies and decide whether to continue or stop.
+            按脚本批量给同一个机器人发消息。每执行完一轮，可先查看各账号返回内容，再决定继续下一条还是停止。
         </MudAlert>
 
         <MudTextField @bind-Value="botTarget"
-                      Label="Bot Username or Link"
+                      Label="机器人用户名或链接"
                       Variant="Variant.Outlined"
                       Placeholder="@BotTargetPlaceholder"
                       Disabled="@running"
@@ -24,14 +24,14 @@
         <MudGrid>
             <MudItem xs="12" md="6">
                 <MudTextField @bind-Value="startParameter"
-                              Label="Start Parameter (Optional)"
+                              Label="/start 参数（可选）"
                               Variant="Variant.Outlined"
                               Placeholder="invite_abc"
                               Disabled="@running" />
             </MudItem>
             <MudItem xs="12" md="3">
                 <MudNumericField T="int" @bind-Value="waitTimeoutSeconds"
-                                 Label="Reply Timeout (sec)"
+                                 Label="等待回复超时（秒）"
                                  Variant="Variant.Outlined"
                                  Min="3"
                                  Max="300"
@@ -39,7 +39,7 @@
             </MudItem>
             <MudItem xs="12" md="3">
                 <MudNumericField T="int" @bind-Value="delayBetweenAccountsSeconds"
-                                 Label="Delay Between Accounts (sec)"
+                                 Label="账号间隔（秒）"
                                  Variant="Variant.Outlined"
                                  Min="0"
                                  Max="60"
@@ -48,35 +48,35 @@
         </MudGrid>
 
         <MudSwitch @bind-Value="autoStartBeforeFirstMessage"
-                   Label="Send /start before first script line"
+                   Label="首条脚本前先发送 /start"
                    Disabled="@running" />
 
         <MudTextField @bind-Value="messageScript"
-                      Label="Message Script (one line per message)"
+                      Label="消息脚本（每行一条）"
                       Variant="Variant.Outlined"
                       Lines="6"
                       Immediate="true"
                       Disabled="@running"
-                      HelperText="Example: /start, checkin, points query. One message per line." />
+                      HelperText="示例：/start、签到、查询积分。每行只写一条消息。" />
 
         <MudDivider />
 
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-            <MudText Typo="Typo.h6">Accounts</MudText>
-            <MudChip T="string" Color="Color.Primary" Size="Size.Small">Selected @selectedAccountIds.Count / @accounts.Count</MudChip>
+            <MudText Typo="Typo.h6">账号列表</MudText>
+            <MudChip T="string" Color="Color.Primary" Size="Size.Small">已选择 @selectedAccountIds.Count / @accounts.Count</MudChip>
             <MudSpacer />
             <MudButton Variant="Variant.Outlined"
                        Color="Color.Default"
                        StartIcon="@Icons.Material.Filled.Refresh"
                        Disabled="@(running || loadingAccounts)"
                        OnClick="ReloadAccountsAsync">
-                Reload
+                刷新账号
             </MudButton>
         </MudStack>
 
         <MudTextField @bind-Value="accountSearch"
-                      Label="Search Accounts"
-                      Placeholder="Phone / Username / Nickname / Remark"
+                      Label="搜索账号"
+                      Placeholder="手机号 / 用户名 / 昵称 / 备注"
                       Variant="Variant.Outlined"
                       Adornment="Adornment.Start"
                       AdornmentIcon="@Icons.Material.Filled.Search"
@@ -84,10 +84,10 @@
 
         <MudStack Row="true" Spacing="1">
             <MudButton Variant="Variant.Text" Color="Color.Primary" Disabled="@running" OnClick="SelectAllFiltered">
-                Select Filtered
+                选择当前筛选
             </MudButton>
             <MudButton Variant="Variant.Text" Color="Color.Secondary" Disabled="@running" OnClick="ClearSelection">
-                Clear Selection
+                清空选择
             </MudButton>
         </MudStack>
 
@@ -97,30 +97,37 @@
                   Loading="@loadingAccounts"
                   Breakpoint="Breakpoint.Sm">
             <HeaderContent>
-                <MudTh>Pick</MudTh>
+                <MudTh>选择</MudTh>
                 <MudTh>ID</MudTh>
-                <MudTh>Phone</MudTh>
-                <MudTh>Username</MudTh>
-                <MudTh>Nickname / Remark</MudTh>
+                <MudTh>手机号</MudTh>
+                <MudTh>用户名</MudTh>
+                <MudTh>昵称 / 备注</MudTh>
             </HeaderContent>
             <RowTemplate>
-                <MudTd DataLabel="Pick">
-                    <MudCheckBox T="bool"
-                                 Value="@selectedAccountIds.Contains(context.Id)"
-                                 ValueChanged="@(v => ToggleAccount(context.Id, v))"
-                                 Disabled="@running" />
+                <MudTd DataLabel="选择">
+                    <MudButton Variant="Variant.Outlined"
+                               Size="Size.Small"
+                               Color="@(selectedAccountIds.Contains(context.Id) ? Color.Success : Color.Default)"
+                               Disabled="@running"
+                               OnClick="@(() => ToggleAccountSelectionAsync(context.Id))">
+                        @(selectedAccountIds.Contains(context.Id) ? "已选中" : "选择")
+                    </MudButton>
                 </MudTd>
                 <MudTd DataLabel="ID">@context.Id</MudTd>
-                <MudTd DataLabel="Phone">@context.DisplayPhone</MudTd>
-                <MudTd DataLabel="Username">@(!string.IsNullOrWhiteSpace(context.Username) ? $"@{context.Username}" : "-")</MudTd>
-                <MudTd DataLabel="Nickname / Remark">@DisplayName(context)</MudTd>
+                <MudTd DataLabel="手机号">@context.DisplayPhone</MudTd>
+                <MudTd DataLabel="用户名">@(!string.IsNullOrWhiteSpace(context.Username) ? $"@{context.Username}" : "-")</MudTd>
+                <MudTd DataLabel="昵称 / 备注">@DisplayName(context)</MudTd>
             </RowTemplate>
             <NoRecordsContent>
-                <MudText>No accounts matched.</MudText>
+                <MudText>没有匹配到账号。</MudText>
             </NoRecordsContent>
         </MudTable>
 
         <MudDivider />
+
+        <MudAlert Severity="@StartHintSeverity" Variant="Variant.Outlined" Dense="true">
+            @StartHintText
+        </MudAlert>
 
         <MudStack Row="true" Spacing="2">
             <MudButton Variant="Variant.Filled"
@@ -128,47 +135,47 @@
                        StartIcon="@Icons.Material.Filled.PlayArrow"
                        Disabled="@(!CanStart)"
                        OnClick="StartWorkflowAsync">
-                Start First Line
+                开始第 1 条
             </MudButton>
             <MudButton Variant="Variant.Filled"
                        Color="Color.Success"
                        StartIcon="@Icons.Material.Filled.SkipNext"
                        Disabled="@(!CanContinue)"
                        OnClick="ContinueWorkflowAsync">
-                Continue Next Line
+                继续下一条
             </MudButton>
             <MudButton Variant="Variant.Outlined"
                        Color="Color.Error"
                        StartIcon="@Icons.Material.Filled.Stop"
                        Disabled="@(!CanStop)"
                        OnClick="StopWorkflow">
-                Stop
+                停止
             </MudButton>
             <MudButton Variant="Variant.Text"
                        Color="Color.Default"
                        StartIcon="@Icons.Material.Filled.RestartAlt"
                        Disabled="@(!CanReset)"
                        OnClick="ResetWorkflow">
-                Reset
+                重置
             </MudButton>
         </MudStack>
 
         @if (running)
         {
             <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
-                Running line @(currentStepIndex + 2)...
+                正在执行第 @(currentStepIndex + 2) 条：@Shorten(workflowMessages.ElementAtOrDefault(currentStepIndex + 1), 120)
             </MudAlert>
         }
         else if (workflowActive && HasNextStep)
         {
             <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Dense="true">
-                Line @(currentStepIndex + 1) completed. Next: @Shorten(workflowMessages[currentStepIndex + 1], 120)
+                第 @(currentStepIndex + 1) 条已完成。请先查看返回结果，再决定是否继续下一条：@Shorten(workflowMessages[currentStepIndex + 1], 120)
             </MudAlert>
         }
         else if (!workflowActive && currentStepIndex >= 0)
         {
             <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true">
-                Workflow stopped. You can reset and run again.
+                流程已停止。可点击“重置”后重新开始。
             </MudAlert>
         }
     </MudStack>
@@ -177,34 +184,34 @@
 @if (currentStepResults.Count > 0)
 {
     <MudPaper Class="pa-4 mt-4" Elevation="0" Outlined="true">
-        <MudText Typo="Typo.h6" Class="mb-2">Current Round: Line @(currentStepIndex + 1)</MudText>
+        <MudText Typo="Typo.h6" Class="mb-2">当前轮次：第 @(currentStepIndex + 1) 条</MudText>
         <MudText Typo="Typo.body2" Class="mb-3 mud-text-secondary">
-            Message: @Shorten(workflowMessages[currentStepIndex], 200)
+            发送内容：@Shorten(workflowMessages[currentStepIndex], 200)
         </MudText>
         <MudTable Items="currentStepResults" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
             <HeaderContent>
-                <MudTh>Account</MudTh>
-                <MudTh>Sent</MudTh>
-                <MudTh>Reply</MudTh>
-                <MudTh>Reply Text</MudTh>
-                <MudTh>Buttons</MudTh>
-                <MudTh>Error</MudTh>
+                <MudTh>账号</MudTh>
+                <MudTh>发送</MudTh>
+                <MudTh>回复</MudTh>
+                <MudTh>回复内容</MudTh>
+                <MudTh>按钮</MudTh>
+                <MudTh>错误</MudTh>
             </HeaderContent>
             <RowTemplate>
-                <MudTd DataLabel="Account">@context.AccountLabel</MudTd>
-                <MudTd DataLabel="Sent">
+                <MudTd DataLabel="账号">@context.AccountLabel</MudTd>
+                <MudTd DataLabel="发送">
                     <MudChip T="string" Size="Size.Small" Color="@(context.SendSuccess ? Color.Success : Color.Error)">
-                        @(context.SendSuccess ? "OK" : "Failed")
+                        @(context.SendSuccess ? "成功" : "失败")
                     </MudChip>
                 </MudTd>
-                <MudTd DataLabel="Reply">
+                <MudTd DataLabel="回复">
                     <MudChip T="string" Size="Size.Small" Color="@(context.ResponseSuccess ? Color.Success : Color.Default)">
-                        @(context.ResponseSuccess ? "Captured" : "None")
+                        @(context.ResponseSuccess ? "已捕获" : "无")
                     </MudChip>
                 </MudTd>
-                <MudTd DataLabel="Reply Text">@ToSingleLine(context.ResponseText, 80)</MudTd>
-                <MudTd DataLabel="Buttons">@ToSingleLine(context.ButtonsSummary, 60)</MudTd>
-                <MudTd DataLabel="Error">@ToSingleLine(context.Error, 80)</MudTd>
+                <MudTd DataLabel="回复内容">@ToSingleLine(context.ResponseText, 80)</MudTd>
+                <MudTd DataLabel="按钮">@ToSingleLine(context.ButtonsSummary, 60)</MudTd>
+                <MudTd DataLabel="错误">@ToSingleLine(context.Error, 80)</MudTd>
             </RowTemplate>
         </MudTable>
     </MudPaper>
@@ -213,21 +220,21 @@
 @if (history.Count > 0)
 {
     <MudPaper Class="pa-4 mt-4" Elevation="0" Outlined="true">
-        <MudText Typo="Typo.h6" Class="mb-2">Run History</MudText>
+        <MudText Typo="Typo.h6" Class="mb-2">执行历史</MudText>
         <MudTable Items="history" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
             <HeaderContent>
-                <MudTh>Time</MudTh>
-                <MudTh>Line</MudTh>
-                <MudTh>Message</MudTh>
-                <MudTh>Sent OK</MudTh>
-                <MudTh>Reply Captured</MudTh>
+                <MudTh>时间</MudTh>
+                <MudTh>脚本行</MudTh>
+                <MudTh>消息</MudTh>
+                <MudTh>发送成功</MudTh>
+                <MudTh>捕获回复</MudTh>
             </HeaderContent>
             <RowTemplate>
-                <MudTd DataLabel="Time">@context.ExecutedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</MudTd>
-                <MudTd DataLabel="Line">@context.StepNumber</MudTd>
-                <MudTd DataLabel="Message">@Shorten(context.Message, 80)</MudTd>
-                <MudTd DataLabel="Sent OK">@($"{context.Results.Count(x => x.SendSuccess)}/{context.Results.Count}")</MudTd>
-                <MudTd DataLabel="Reply Captured">@($"{context.Results.Count(x => x.ResponseSuccess)}/{context.Results.Count}")</MudTd>
+                <MudTd DataLabel="时间">@context.ExecutedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</MudTd>
+                <MudTd DataLabel="脚本行">@context.StepNumber</MudTd>
+                <MudTd DataLabel="消息">@Shorten(context.Message, 80)</MudTd>
+                <MudTd DataLabel="发送成功">@($"{context.Results.Count(x => x.SendSuccess)}/{context.Results.Count}")</MudTd>
+                <MudTd DataLabel="捕获回复">@($"{context.Results.Count(x => x.ResponseSuccess)}/{context.Results.Count}")</MudTd>
             </RowTemplate>
         </MudTable>
     </MudPaper>
@@ -243,12 +250,12 @@
     private int currentStepIndex = -1;
 
     private string botTarget = string.Empty;
-    private const string BotTargetPlaceholder = "@examplebot or https://t.me/examplebot";
+    private const string BotTargetPlaceholder = "examplebot 或 https://t.me/examplebot";
     private string startParameter = string.Empty;
     private bool autoStartBeforeFirstMessage = true;
     private int waitTimeoutSeconds = 25;
     private int delayBetweenAccountsSeconds = 2;
-    private string messageScript = "/start\ncheckin\npoints";
+    private string messageScript = "/start\n签到\n查询积分";
     private string accountSearch = string.Empty;
 
     private List<Account> accounts = new();
@@ -274,6 +281,26 @@
     private bool CanReset => !running && (workflowActive || currentStepIndex >= 0 || history.Count > 0);
     private bool HasNextStep => workflowActive && currentStepIndex + 1 < workflowMessages.Count;
 
+    private Severity StartHintSeverity => CanStart ? Severity.Success : Severity.Warning;
+
+    private string StartHintText
+    {
+        get
+        {
+            if (running)
+                return "正在执行中，请等待当前轮次完成。";
+            if (workflowActive)
+                return HasNextStep ? "当前轮已完成，可查看返回后点击“继续下一条”。" : "全部脚本已执行完成。";
+            if (string.IsNullOrWhiteSpace(botTarget))
+                return "请先填写机器人用户名或链接。";
+            if (selectedAccountIds.Count == 0)
+                return "请至少选择一个账号。";
+            if (ParseScriptMessages(messageScript).Count == 0)
+                return "请至少填写一条要发送的消息。";
+            return $"已就绪：{selectedAccountIds.Count} 个账号，{ParseScriptMessages(messageScript).Count} 条脚本。";
+        }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         await ReloadAccountsAsync();
@@ -290,11 +317,13 @@
 
             var validIds = accounts.Select(x => x.Id).ToHashSet();
             selectedAccountIds.RemoveWhere(id => !validIds.Contains(id));
+
+            Snackbar.Add($"已加载 {accounts.Count} 个可用账号。", Severity.Info);
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Load accounts failed");
-            Snackbar.Add($"Load accounts failed: {ex.Message}", Severity.Error);
+            Snackbar.Add($"加载账号失败：{ex.Message}", Severity.Error);
         }
         finally
         {
@@ -302,24 +331,29 @@
         }
     }
 
-    private void ToggleAccount(int accountId, bool selected)
+    private Task ToggleAccountSelectionAsync(int accountId)
     {
-        if (selected)
-            selectedAccountIds.Add(accountId);
-        else
+        if (selectedAccountIds.Contains(accountId))
             selectedAccountIds.Remove(accountId);
+        else
+            selectedAccountIds.Add(accountId);
+
+        return Task.CompletedTask;
     }
 
     private Task SelectAllFiltered()
     {
         foreach (var account in FilteredAccounts)
             selectedAccountIds.Add(account.Id);
+
+        Snackbar.Add($"已选择 {selectedAccountIds.Count} 个账号。", Severity.Success);
         return Task.CompletedTask;
     }
 
     private Task ClearSelection()
     {
         selectedAccountIds.Clear();
+        Snackbar.Add("已清空账号选择。", Severity.Info);
         return Task.CompletedTask;
     }
 
@@ -331,19 +365,19 @@
         var messages = ParseScriptMessages(messageScript);
         if (messages.Count == 0)
         {
-            Snackbar.Add("Please provide at least one script line.", Severity.Warning);
+            Snackbar.Add("请至少填写一条脚本消息。", Severity.Warning);
             return;
         }
 
         if (selectedAccountIds.Count == 0)
         {
-            Snackbar.Add("Please select accounts first.", Severity.Warning);
+            Snackbar.Add("请先选择账号。", Severity.Warning);
             return;
         }
 
         if (string.IsNullOrWhiteSpace(botTarget))
         {
-            Snackbar.Add("Please fill bot username or link.", Severity.Warning);
+            Snackbar.Add("请先填写机器人用户名或链接。", Severity.Warning);
             return;
         }
 
@@ -356,6 +390,7 @@
         currentStepIndex = -1;
         workflowActive = true;
 
+        Snackbar.Add($"开始执行第 1 条，目标账号 {selectedAccountIds.Count} 个。", Severity.Info);
         await ExecuteNextStepAsync();
     }
 
@@ -364,6 +399,7 @@
         if (!HasNextStep || running)
             return;
 
+        Snackbar.Add($"开始执行第 {currentStepIndex + 2} 条。", Severity.Info);
         await ExecuteNextStepAsync();
     }
 
@@ -371,7 +407,7 @@
     {
         workflowActive = false;
         runCts?.Cancel();
-        Snackbar.Add("Workflow stopped.", Severity.Warning);
+        Snackbar.Add("流程已停止。", Severity.Warning);
         return Task.CompletedTask;
     }
 
@@ -387,6 +423,7 @@
         history.Clear();
         resolvedTargets.Clear();
         resolvedBotUsernames.Clear();
+        Snackbar.Add("流程已重置。", Severity.Info);
         return Task.CompletedTask;
     }
 
@@ -415,7 +452,7 @@
         if (selectedAccounts.Count == 0)
         {
             workflowActive = false;
-            Snackbar.Add("No selected accounts available.", Severity.Warning);
+            Snackbar.Add("当前没有可执行的已选账号。", Severity.Warning);
             return;
         }
 
@@ -452,8 +489,11 @@
                         assumeBotUsername: true);
                     if (!start.Success)
                     {
-                        row.Error = start.Error ?? "Start bot failed.";
+                        row.Error = start.Error ?? "发送 /start 失败。";
                         stepResults.Add(row);
+                        currentStepResults.Clear();
+                        currentStepResults.AddRange(stepResults.Select(x => x.Clone()));
+                        StateHasChanged();
                         continue;
                     }
                 }
@@ -467,8 +507,11 @@
                         assumeBotUsername: true);
                     if (!resolve.Success || resolve.Target == null)
                     {
-                        row.Error = resolve.Error ?? "Resolve bot target failed.";
+                        row.Error = resolve.Error ?? "解析机器人目标失败。";
                         stepResults.Add(row);
+                        currentStepResults.Clear();
+                        currentStepResults.AddRange(stepResults.Select(x => x.Clone()));
+                        StateHasChanged();
                         continue;
                     }
 
@@ -488,8 +531,11 @@
                 row.SendSuccess = send.Success;
                 if (!send.Success || !send.MessageId.HasValue)
                 {
-                    row.Error = send.Error ?? "Send failed.";
+                    row.Error = send.Error ?? "发送消息失败。";
                     stepResults.Add(row);
+                    currentStepResults.Clear();
+                    currentStepResults.AddRange(stepResults.Select(x => x.Clone()));
+                    StateHasChanged();
                     continue;
                 }
 
@@ -508,8 +554,11 @@
 
                 if (!wait.Success || wait.Candidate == null)
                 {
-                    row.Error = wait.Error ?? "Reply not captured.";
+                    row.Error = wait.Error ?? "未捕获到回复。";
                     stepResults.Add(row);
+                    currentStepResults.Clear();
+                    currentStepResults.AddRange(stepResults.Select(x => x.Clone()));
+                    StateHasChanged();
                     continue;
                 }
 
@@ -517,6 +566,10 @@
                 row.ResponseText = NormalizeResponseText(wait.Candidate);
                 row.ButtonsSummary = BuildButtonsSummary(wait.Candidate);
                 stepResults.Add(row);
+
+                currentStepResults.Clear();
+                currentStepResults.AddRange(stepResults.Select(x => x.Clone()));
+                StateHasChanged();
 
                 if (delaySeconds > 0 && i < selectedAccounts.Count - 1)
                     await Task.Delay(TimeSpan.FromSeconds(delaySeconds), cancellationToken);
@@ -536,21 +589,21 @@
             if (currentStepIndex >= workflowMessages.Count - 1)
             {
                 workflowActive = false;
-                Snackbar.Add("All script lines completed.", Severity.Success);
+                Snackbar.Add("全部脚本已执行完成。", Severity.Success);
             }
             else
             {
-                Snackbar.Add($"Line {currentStepIndex + 1} completed. Review replies, then continue or stop.", Severity.Info);
+                Snackbar.Add($"第 {currentStepIndex + 1} 条执行完成。请查看回复后再决定是否继续。", Severity.Info);
             }
         }
         catch (OperationCanceledException)
         {
-            Snackbar.Add("Execution canceled.", Severity.Warning);
+            Snackbar.Add("执行已取消。", Severity.Warning);
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Execute bot check-in step failed");
-            Snackbar.Add($"Execution failed: {ex.Message}", Severity.Error);
+            Snackbar.Add($"执行失败：{ex.Message}", Severity.Error);
             workflowActive = false;
         }
         finally
@@ -618,8 +671,8 @@
         if (!string.IsNullOrWhiteSpace(candidate.Text))
             return candidate.Text.Trim();
         if (candidate.ImageJpegBytes is { Length: > 0 })
-            return "[image]";
-        return "[no text]";
+            return "[图片]";
+        return "[无文本]";
     }
 
     private static string? BuildButtonsSummary(TelegramVerificationMessageCandidate candidate)

@@ -1,17 +1,17 @@
-# Bot Check-in Assistant Module
+# 机器人签到助手模块
 
-This is an installable Telegram Panel module.
+这是一个可安装到 Telegram Panel 的模块。
 
-## Features
+## 功能说明
 
-- Select multiple accounts and target one bot.
-- Send scripted messages line by line.
-- Capture bot reply text / button summary after each send.
-- Manually choose `Continue Next Line` or `Stop` after each round.
+- 选择多个账号，统一给同一个机器人发消息。
+- 按脚本逐行发送消息。
+- 每轮发送后抓取机器人回复文本和按钮摘要。
+- 用户看完返回内容后，可手动决定“继续下一条”或“停止”。
 
-## Build TPM Package
+## 打包 TPM
 
-From repository root:
+在仓库根目录执行：
 
 ```powershell
 powershell tools/package-module.ps1 `
@@ -19,14 +19,13 @@ powershell tools/package-module.ps1 `
   -Manifest "src/Modules/TelegramPanel.Module.BotCheckinAssistant/manifest.json"
 ```
 
-Default output:
+默认输出文件：
 
-- `artifacts/modules/community.bot-checkin-assistant-1.0.0.tpm`
+- `artifacts/modules/community.bot-checkin-assistant-1.0.1.tpm`
 
-## Install in Panel
+## 在面板中安装
 
-1. Open `Modules` page in Telegram Panel.
-2. Upload the generated `.tpm`.
-3. Enable module and restart panel service.
-4. Open page: `Operations -> Bot Check-in Assistant`.
-
+1. 打开 Telegram Panel 的“模块”页面。
+2. 上传生成好的 `.tpm` 文件。
+3. 启用模块，并重启面板服务。
+4. 进入“运营工具 -> 机器人签到助手”页面使用。

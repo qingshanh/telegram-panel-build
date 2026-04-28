@@ -10,8 +10,8 @@ public sealed class BotCheckinAssistantModule : ITelegramPanelModule, IModuleUiP
     public ModuleManifest Manifest { get; } = new()
     {
         Id = "community.bot-checkin-assistant",
-        Name = "Bot Check-in Assistant",
-        Version = "1.0.0",
+        Name = "机器人签到助手",
+        Version = "1.0.1",
         Host = new HostCompatibility
         {
             Min = "1.0.0",
@@ -26,12 +26,12 @@ public sealed class BotCheckinAssistantModule : ITelegramPanelModule, IModuleUiP
 
     public void ConfigureServices(IServiceCollection services, ModuleHostContext context)
     {
-        // No module-local DI services currently required.
+        // 当前模块无需额外注册本地服务。
     }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints, ModuleHostContext context)
     {
-        // This module currently exposes only UI pages.
+        // 当前模块只提供界面页面，不额外暴露接口。
     }
 
     public IEnumerable<ModuleNavItem> GetNavItems(ModuleHostContext context)
@@ -44,12 +44,11 @@ public sealed class BotCheckinAssistantModule : ITelegramPanelModule, IModuleUiP
         yield return new ModulePageDefinition
         {
             Key = "checkin",
-            Title = "Bot Check-in Assistant",
+            Title = "机器人签到助手",
             Icon = Icons.Material.Filled.FactCheck,
-            Group = "Operations",
+            Group = "运营工具",
             Order = 20,
             ComponentType = typeof(Pages.BotCheckinAssistantPage).AssemblyQualifiedName ?? string.Empty
         };
     }
 }
-
