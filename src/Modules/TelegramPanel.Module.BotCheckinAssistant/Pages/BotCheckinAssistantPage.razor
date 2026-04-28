@@ -17,7 +17,7 @@
         <MudTextField @bind-Value="botTarget"
                       Label="Bot Username or Link"
                       Variant="Variant.Outlined"
-                      Placeholder="@examplebot or https://t.me/examplebot"
+                      Placeholder="@@examplebot or https://t.me/examplebot"
                       Disabled="@running"
                       Immediate="true" />
 
@@ -68,7 +68,7 @@
             <MudButton Variant="Variant.Outlined"
                        Color="Color.Default"
                        StartIcon="@Icons.Material.Filled.Refresh"
-                       Disabled="@running || loadingAccounts"
+                       Disabled="@(running || loadingAccounts)"
                        OnClick="ReloadAccountsAsync">
                 Reload
             </MudButton>
@@ -679,4 +679,3 @@
         public List<AccountStepResult> Results { get; init; } = new();
     }
 }
-
