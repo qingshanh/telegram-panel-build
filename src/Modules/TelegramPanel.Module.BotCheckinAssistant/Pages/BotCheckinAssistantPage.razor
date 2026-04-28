@@ -17,7 +17,7 @@
         <MudTextField @bind-Value="botTarget"
                       Label="Bot Username or Link"
                       Variant="Variant.Outlined"
-                      Placeholder="@@examplebot or https://t.me/examplebot"
+                      Placeholder="@BotTargetPlaceholder"
                       Disabled="@running"
                       Immediate="true" />
 
@@ -106,8 +106,8 @@
             <RowTemplate>
                 <MudTd DataLabel="Pick">
                     <MudCheckBox T="bool"
-                                 Checked="@selectedAccountIds.Contains(context.Id)"
-                                 CheckedChanged="@(v => ToggleAccount(context.Id, v))"
+                                 Value="@selectedAccountIds.Contains(context.Id)"
+                                 ValueChanged="@(v => ToggleAccount(context.Id, v))"
                                  Disabled="@running" />
                 </MudTd>
                 <MudTd DataLabel="ID">@context.Id</MudTd>
@@ -243,6 +243,7 @@
     private int currentStepIndex = -1;
 
     private string botTarget = string.Empty;
+    private const string BotTargetPlaceholder = "@examplebot or https://t.me/examplebot";
     private string startParameter = string.Empty;
     private bool autoStartBeforeFirstMessage = true;
     private int waitTimeoutSeconds = 25;

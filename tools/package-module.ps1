@@ -77,11 +77,25 @@ $publishContainer = "/src/$publishRel"
 $projectContainer = "/src/$Project"
 
 Write-Host "Building module with Docker..." -ForegroundColor Cyan
-docker run --rm `
-    -v "${repoRoot}:/src" `
-    -w "/src" `
-    mcr.microsoft.com/dotnet/sdk:8.0 `
-    dotnet publish "$projectContainer" -c Release -o "$publishContainer" /p:UseAppHost=false
+$dockerArgs = @("run", "--rm")
+if ($IsLinux -or $IsMacOS)
+{
+    $uid = (id -u).Trim()
+    $gid = (id -g).Trim()
+    if (-not [string]::IsNullOrWhiteSpace($uid) -and -not [string]::IsNullOrWhiteSpace($gid))
+    {
+        $dockerArgs += @("--user", "${uid}:${gid}")
+    }
+}
+
+$dockerArgs += @(
+    "-v", "${repoRoot}:/src",
+    "-w", "/src",
+    "mcr.microsoft.com/dotnet/sdk:8.0",
+    "dotnet", "publish", "$projectContainer", "-c", "Release", "-o", "$publishContainer", "/p:UseAppHost=false"
+)
+
+& docker @dockerArgs
 if ($LASTEXITCODE -ne 0)
 {
     Write-Warning "Docker publish 失败（退出码：$LASTEXITCODE），将回退到本机 dotnet publish（需本机已安装 dotnet）。"
