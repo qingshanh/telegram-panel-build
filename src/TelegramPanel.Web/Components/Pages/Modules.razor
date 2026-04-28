@@ -1,0 +1,407 @@
+@page "/modules"
+@inject TelegramPanel.Web.Modules.ModuleInstallerService ModuleInstaller
+@inject TelegramPanel.Web.Modules.ModuleContributionRegistry Contributions
+@inject TelegramPanel.Web.Services.AppRestartService Restart
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@using Microsoft.AspNetCore.Components.Forms
+@using TelegramPanel.Modules
+@using TelegramPanel.Web.Modules
+
+<PageTitle>模块管理 - Telegram Panel</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">模块管理</MudText>
+
+<MudCard Class="mb-4">
+    <MudCardContent>
+        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
+            本程序的模块会在启动时加载（不支持真正的运行时热插拔）。
+            但在 Docker 部署下可开启“自动重启服务”，会由容器自动拉起（无需手动重启容器），更新体验接近热插拔。
+        </MudAlert>
+
+        <MudStack Spacing="2" Class="mt-3">
+            <MudFileUpload T="IReadOnlyList<IBrowserFile>" FilesChanged="OnFilesChanged" Accept=".tpm,.zip" MaximumFileCount="1">
+                <ActivatorContent>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Upload">
+                        选择模块包（.tpm/.zip）
+                    </MudButton>
+                </ActivatorContent>
+            </MudFileUpload>
+
+            <MudSwitch T="bool" @bind-Value="autoRestartOnChange" Color="Color.Primary"
+                       Label="模块变更后自动重启服务（推荐）" />
+            <MudSwitch T="bool" @bind-Value="activateAndEnableAfterInstall" Color="Color.Primary"
+                       Label="上传后自动切换到新版本并启用" />
+
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                    @(selectedFile == null ? "未选择文件" : $"已选择：{selectedFile.Name}（{selectedFile.Size} bytes）")
+                </MudText>
+                <MudSpacer />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(selectedFile == null || installing)" OnClick="Install">
+                    @if (installing)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        <span>上传中...</span>
+                    }
+                    else
+                    {
+                        <span>上传</span>
+                    }
+                </MudButton>
+            </MudStack>
+        </MudStack>
+    </MudCardContent>
+</MudCard>
+
+<MudCard>
+    <MudCardContent>
+        @if (Contributions.Diagnostics.Count > 0)
+        {
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true" Class="mb-3">
+                <MudText Typo="Typo.subtitle2">检测到模块贡献冲突（已自动忽略部分定义）：</MudText>
+                <MudList T="System.String" Dense="true">
+                    @foreach (var d in Contributions.Diagnostics)
+                    {
+                        <MudListItem T="System.String">@d</MudListItem>
+                    }
+                </MudList>
+            </MudAlert>
+        }
+
+        <MudTable Items="@modules" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm" Loading="@loading">
+            <ToolBarContent>
+                <MudText Typo="Typo.h6">已安装模块 (@modules.Count)</MudText>
+                <MudSpacer />
+                <MudButton Variant="Variant.Outlined" Color="Color.Default" StartIcon="@Icons.Material.Filled.Refresh" Disabled="@loading" OnClick="Reload">
+                    刷新
+                </MudButton>
+            </ToolBarContent>
+            <HeaderContent>
+                <MudTh>模块</MudTh>
+                <MudTh>版本</MudTh>
+                <MudTh>状态</MudTh>
+                <MudTh>操作</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="模块">
+                    <MudText Typo="Typo.subtitle2">@GetDisplayName(context)</MudText>
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">@context.Id</MudText>
+                    @if (!string.IsNullOrWhiteSpace(context.ManifestError))
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Error">@context.ManifestError</MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="版本">
+                    <MudText Typo="Typo.body2">@context.ActiveVersion</MudText>
+                    @if (!string.IsNullOrWhiteSpace(context.LastGoodVersion))
+                    {
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">last-good: @context.LastGoodVersion</MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="状态">
+                    <MudChip T="string" Size="Size.Small" Color="@(context.Enabled ? Color.Success : Color.Default)">
+                        @(context.Enabled ? "启用" : "停用")
+                    </MudChip>
+                    @if (context.BuiltIn)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="ml-2">内置</MudChip>
+                    }
+                </MudTd>
+                <MudTd DataLabel="操作">
+                    @if (context.Enabled)
+                    {
+                        <MudButton Variant="Variant.Text" Color="Color.Warning" Disabled="@loading" OnClick="@(() => Disable(context.Id))">
+                            停用
+                        </MudButton>
+                    }
+                    else
+                    {
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" Disabled="@loading" OnClick="@(() => Enable(context.Id))">
+                            启用
+                        </MudButton>
+                    }
+
+                    @if (!context.BuiltIn)
+                    {
+                        @if (context.InstalledVersions.Count > 1)
+                        {
+                            <MudButton Variant="Variant.Text" Color="Color.Default" Disabled="@loading" OnClick="@(() => PruneOldVersions(context))">
+                                清理旧版本
+                            </MudButton>
+                        }
+
+                        <MudButton Variant="Variant.Text" Color="Color.Error" Disabled="@loading" OnClick="@(() => Remove(context.Id))">
+                            删除
+                        </MudButton>
+                    }
+
+                    <MudButton Variant="Variant.Text" Color="Color.Default" Disabled="@loading" OnClick="@(() => ShowDetails(context))">
+                        详情
+                    </MudButton>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>暂无模块</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudCardContent>
+</MudCard>
+
+@code
+{
+    private bool loading = true;
+    private bool installing;
+    private IBrowserFile? selectedFile;
+    private List<ModuleOverview> modules = new();
+    private bool autoRestartOnChange = true;
+    private bool activateAndEnableAfterInstall = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        loading = true;
+        try
+        {
+            var list = await ModuleInstaller.GetOverviewAsync();
+            modules = list.ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"加载失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void OnFilesChanged(IReadOnlyList<IBrowserFile> files)
+    {
+        selectedFile = files.FirstOrDefault();
+    }
+
+    private async Task Install()
+    {
+        if (selectedFile == null || installing)
+            return;
+
+        installing = true;
+        try
+        {
+            await using var stream = selectedFile.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
+            var result = await ModuleInstaller.InstallAsync(stream, selectedFile.Name, enableAfterInstall: false);
+            if (!result.Success)
+            {
+                Snackbar.Add($"上传失败：{result.Message}", Severity.Error);
+                return;
+            }
+
+            if (activateAndEnableAfterInstall)
+            {
+                var moduleId = (result.ModuleId ?? "").Trim();
+                var version = (result.Version ?? "").Trim();
+                if (moduleId.Length == 0 || version.Length == 0)
+                {
+                    Snackbar.Add("上传成功，但返回的模块信息不完整（ModuleId/Version 为空）", Severity.Warning);
+                    selectedFile = null;
+                    await Reload();
+                    return;
+                }
+
+                var setActive = await ModuleInstaller.SetActiveVersionAsync(moduleId, version);
+                if (!setActive.Success)
+                {
+                    Snackbar.Add($"已上传：{moduleId} {version}，但切换版本失败：{setActive.Message}", Severity.Warning);
+                }
+                else
+                {
+                    var enable = await ModuleInstaller.EnableAsync(moduleId);
+                    if (!enable.Success)
+                    {
+                        Snackbar.Add($"已上传：{moduleId} {version}，但启用失败：{enable.Message}", Severity.Warning);
+                    }
+                    else
+                    {
+                        Snackbar.Add($"已上传并启用：{moduleId} {version}", Severity.Success);
+
+                        if (autoRestartOnChange)
+                        {
+                            Snackbar.Add("即将自动重启服务以应用模块变更…", Severity.Info);
+                            Restart.RequestRestart(TimeSpan.FromSeconds(1), $"module install {moduleId} {version}");
+                        }
+                    }
+                }
+            }
+            else
+            {
+                Snackbar.Add($"上传成功：{result.ModuleId} {result.Version}（请切换版本/启用并重启服务生效）", Severity.Success);
+            }
+
+            selectedFile = null;
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"上传异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            installing = false;
+        }
+    }
+
+    private async Task Enable(string id)
+    {
+        var r = await ModuleInstaller.EnableAsync(id);
+        if (!r.Success)
+        {
+            Snackbar.Add($"启用失败：{r.Message}", Severity.Error);
+            return;
+        }
+
+        Snackbar.Add("已启用", Severity.Success);
+        if (autoRestartOnChange)
+        {
+            Snackbar.Add("即将自动重启服务以应用模块变更…", Severity.Info);
+            Restart.RequestRestart(TimeSpan.FromSeconds(1), $"module enable {id}");
+        }
+        await Reload();
+    }
+
+    private async Task Disable(string id)
+    {
+        var r = await ModuleInstaller.DisableAsync(id);
+        if (!r.Success)
+        {
+            Snackbar.Add($"停用失败：{r.Message}", Severity.Error);
+            return;
+        }
+
+        Snackbar.Add("已停用", Severity.Success);
+        if (autoRestartOnChange)
+        {
+            Snackbar.Add("即将自动重启服务以应用模块变更…", Severity.Info);
+            Restart.RequestRestart(TimeSpan.FromSeconds(1), $"module disable {id}");
+        }
+        await Reload();
+    }
+
+    private async Task Remove(string id)
+    {
+        bool? ok = await DialogService.ShowMessageBox(
+            "确认删除",
+            $"确定删除模块「{id}」吗？删除会移动到回收站目录（可手动找回），但仍建议先停用并重启确认无依赖。",
+            yesText: "删除", cancelText: "取消");
+
+        if (ok != true)
+            return;
+
+        try
+        {
+            var r = await ModuleInstaller.RemoveModuleAsync(id);
+            if (!r.Success)
+            {
+                Snackbar.Add(r.Message, Severity.Error);
+                return;
+            }
+
+            Snackbar.Add("已删除", Severity.Success);
+            if (autoRestartOnChange)
+            {
+                Snackbar.Add("即将自动重启服务以应用模块变更…", Severity.Info);
+                Restart.RequestRestart(TimeSpan.FromSeconds(1), $"module remove {id}");
+            }
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"删除异常：{ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task PruneOldVersions(ModuleOverview m)
+    {
+        if (m.BuiltIn)
+            return;
+
+        var active = (m.ActiveVersion ?? "").Trim();
+        var lastGood = (m.LastGoodVersion ?? "").Trim();
+        var keep = new HashSet<string>(StringComparer.Ordinal);
+        if (!string.IsNullOrWhiteSpace(active)) keep.Add(active);
+        if (!string.IsNullOrWhiteSpace(lastGood)) keep.Add(lastGood);
+
+        var toRemove = m.InstalledVersions
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Distinct(StringComparer.Ordinal)
+            .Where(v => !keep.Contains(v))
+            .ToList();
+
+        if (toRemove.Count == 0)
+        {
+            Snackbar.Add("没有可清理的旧版本", Severity.Info);
+            return;
+        }
+
+        bool? ok = await DialogService.ShowMessageBox(
+            "清理旧版本",
+            $"将删除模块「{m.Id}」的旧版本：{string.Join(", ", toRemove)}。\n" +
+            $"保留版本：{string.Join(", ", keep)}。\n" +
+            "删除会移动到回收站目录（可手动找回），是否继续？",
+            yesText: "继续", cancelText: "取消");
+
+        if (ok != true)
+            return;
+
+        try
+        {
+            var r = await ModuleInstaller.PruneOldVersionsAsync(m.Id);
+            if (!r.Success)
+            {
+                Snackbar.Add(r.Message, Severity.Error);
+                return;
+            }
+
+            Snackbar.Add("已清理旧版本", Severity.Success);
+            if (autoRestartOnChange)
+            {
+                Snackbar.Add("即将自动重启服务以应用模块变更…", Severity.Info);
+                Restart.RequestRestart(TimeSpan.FromSeconds(1), $"module prune {m.Id}");
+            }
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"清理异常：{ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ShowDetails(ModuleOverview m)
+    {
+        var manifest = m.Manifest;
+        var deps = manifest?.Dependencies?.Count > 0
+            ? string.Join("\n", manifest.Dependencies.Select(d => $"{d.Id} {d.Range}"))
+            : "-";
+
+        var details =
+            $"Id: {m.Id}\n" +
+            $"Name: {manifest?.Name ?? "-"}\n" +
+            $"Version: {m.ActiveVersion ?? "-"}\n" +
+            $"Enabled: {m.Enabled}\n" +
+            $"BuiltIn: {m.BuiltIn}\n" +
+            $"InstalledVersions: {string.Join(", ", m.InstalledVersions)}\n" +
+            $"Dependencies:\n{deps}\n";
+
+        await DialogService.ShowMessageBox("模块详情", details);
+    }
+
+    private static string GetDisplayName(ModuleOverview m)
+    {
+        var name = (m.Manifest?.Name ?? "").Trim();
+        return string.IsNullOrWhiteSpace(name) ? m.Id : name;
+    }
+}

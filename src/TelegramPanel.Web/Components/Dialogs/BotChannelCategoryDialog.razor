@@ -1,0 +1,104 @@
+@namespace TelegramPanel.Web.Components.Dialogs
+@inject BotManagementService BotManagement
+@inject ISnackbar Snackbar
+@using TelegramPanel.Data.Entities
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="2">
+            <MudTextField @bind-Value="name" Label="分类名称" Variant="Variant.Outlined" Required="true"
+                          MaxLength="100" Counter="100" />
+            <MudTextField @bind-Value="description" Label="描述（可选）" Variant="Variant.Outlined" Lines="3"
+                          MaxLength="500" Counter="500" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="Cancel" Disabled="@saving">取消</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="@saving">
+            @if (saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                <span>保存中...</span>
+            }
+            else
+            {
+                <span>保存</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code
+{
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public BotChannelCategory? Category { get; set; }
+
+    private bool saving;
+    private int? categoryId;
+    private string name = "";
+    private string description = "";
+
+    protected override void OnInitialized()
+    {
+        // 如果传入了分类，说明是编辑模式
+        if (Category != null)
+        {
+            categoryId = Category.Id;
+            name = Category.Name ?? "";
+            description = Category.Description ?? "";
+        }
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    private async Task Save()
+    {
+        if (saving)
+            return;
+
+        name = (name ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            Snackbar.Add("请输入分类名称", Severity.Warning);
+            return;
+        }
+
+        saving = true;
+        try
+        {
+            if (categoryId == null)
+            {
+                // 新增模式：使用现有的 CreateCategoryAsync 方法
+                var category = await BotManagement.CreateCategoryAsync(name, description);
+                Snackbar.Add("分类创建成功", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(category));
+            }
+            else
+            {
+                // 编辑模式：更新分类
+                var updated = await BotManagement.UpdateCategoryAsync(categoryId.Value, name, description);
+                Snackbar.Add("分类更新成功", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(updated));
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"保存失败：{GetInnermostMessage(ex)}", Severity.Error);
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private static string GetInnermostMessage(Exception ex)
+    {
+        var cur = ex;
+        while (cur.InnerException != null)
+            cur = cur.InnerException;
+        return string.IsNullOrWhiteSpace(cur.Message) ? ex.Message : cur.Message;
+    }
+}

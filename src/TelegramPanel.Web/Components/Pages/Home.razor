@@ -1,0 +1,264 @@
+@page "/"
+@inject AccountManagementService AccountManagement
+@inject ChannelManagementService ChannelManagement
+@inject GroupManagementService GroupManagement
+@inject BatchTaskManagementService BatchTaskManagement
+@inject IChannelService ChannelService
+@inject IGroupService GroupService
+@inject TelegramPanel.Web.Services.DataSyncService DataSync
+@inject ISnackbar Snackbar
+@using TelegramPanel.Core.BatchTasks
+@using TelegramPanel.Data.Entities
+
+<PageTitle>Telegram Panel - 仪表盘</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">仪表盘</MudText>
+
+<MudGrid>
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4" Elevation="2">
+            <div class="d-flex align-center">
+                <MudIcon Icon="@Icons.Material.Filled.AccountCircle" Size="Size.Large" Color="Color.Primary" Class="mr-3" />
+                <div>
+                    <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">账号总数</MudText>
+                    <MudText Typo="Typo.h5">@_accountCount</MudText>
+                </div>
+            </div>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4" Elevation="2">
+            <div class="d-flex align-center">
+                <MudIcon Icon="@Icons.Material.Filled.Campaign" Size="Size.Large" Color="Color.Secondary" Class="mr-3" />
+                <div>
+                    <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">频道总数</MudText>
+                    <MudText Typo="Typo.h5">@_channelCount</MudText>
+                </div>
+            </div>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4" Elevation="2">
+            <div class="d-flex align-center">
+                <MudIcon Icon="@Icons.Material.Filled.Group" Size="Size.Large" Color="Color.Tertiary" Class="mr-3" />
+                <div>
+                    <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">群组总数</MudText>
+                    <MudText Typo="Typo.h5">@_groupCount</MudText>
+                </div>
+            </div>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4" Elevation="2">
+            <div class="d-flex align-center">
+                <MudIcon Icon="@Icons.Material.Filled.PlaylistAddCheck" Size="Size.Large" Color="Color.Success" Class="mr-3" />
+                <div>
+                    <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">活跃任务</MudText>
+                    <MudText Typo="Typo.h5">@_activeTaskCount</MudText>
+                </div>
+            </div>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+<MudGrid Class="mt-4">
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">快速操作</MudText>
+            <MudStack Row="true" Spacing="2" Class="flex-wrap">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Upload" Href="/accounts/import">
+                    导入账号
+                </MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Add" Href="/channels/create">
+                    创建频道
+                </MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Info" StartIcon="@Icons.Material.Filled.Sync"
+                           Disabled="@_syncing"
+                           OnClick="@(async (MouseEventArgs _) => await SyncAllAccounts())">
+                    同步频道/群组数据
+                </MudButton>
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">系统状态</MudText>
+            <MudList T="string" Dense="true">
+                <MudListItem Icon="@Icons.Material.Filled.Circle" IconColor="Color.Success">
+                    在线账号: @_onlineAccountCount
+                </MudListItem>
+                <MudListItem Icon="@Icons.Material.Filled.Circle" IconColor="Color.Warning">
+                    受限账号: @_limitedAccountCount
+                </MudListItem>
+                <MudListItem Icon="@Icons.Material.Filled.Circle" IconColor="Color.Error">
+                    封禁账号: @_bannedAccountCount
+                </MudListItem>
+            </MudList>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+<MudPaper Class="pa-4 mt-4" Elevation="2">
+    <MudText Typo="Typo.h6" Class="mb-3">最近任务</MudText>
+    <MudTable Items="@_recentTasks" Hover="true" Dense="true">
+        <HeaderContent>
+            <MudTh>任务名称</MudTh>
+            <MudTh>类型</MudTh>
+            <MudTh>状态</MudTh>
+            <MudTh>进度</MudTh>
+            <MudTh>创建时间</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>@context.Type</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">@context.Status</MudChip>
+            </MudTd>
+            <MudTd>
+                <MudProgressLinear Value="@context.Progress" Max="@context.Total" Color="Color.Primary" Size="Size.Small" />
+            </MudTd>
+            <MudTd>@context.CreatedAt.ToString("MM-dd HH:mm")</MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Class="pa-4">暂无任务记录</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    private int _accountCount = 0;
+    private int _channelCount = 0;
+    private int _groupCount = 0;
+    private int _activeTaskCount = 0;
+    private int _onlineAccountCount = 0;
+    private int _limitedAccountCount = 0;
+    private int _bannedAccountCount = 0;
+    private List<TaskItem> _recentTasks = new();
+    private bool _syncing = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDashboardAsync();
+    }
+
+    private async Task LoadDashboardAsync()
+    {
+        var accounts = (await AccountManagement.GetAllAccountsAsync()).ToList();
+        var activeAccounts = (await AccountManagement.GetActiveAccountsAsync()).ToList();
+
+        _accountCount = accounts.Count;
+        _onlineAccountCount = activeAccounts.Count;
+        _bannedAccountCount = accounts.Count(IsBannedAccount);
+        _limitedAccountCount = accounts.Count(a => !IsBannedAccount(a) && IsLimitedAccount(a));
+
+        _channelCount = await ChannelManagement.GetTotalChannelCountAsync();
+        _groupCount = await GroupManagement.GetTotalGroupCountAsync();
+
+        var runningTasks = (await BatchTaskManagement.GetRunningTasksAsync()).ToList();
+        _activeTaskCount = runningTasks.Count;
+
+        var recent = (await BatchTaskManagement.GetRecentTasksAsync(10)).ToList();
+        _recentTasks = recent
+            .OrderByDescending(t => t.CreatedAt)
+            .Select(t => new TaskItem(
+                Name: $"{MapTaskTypeName(t.TaskType)} #{t.Id}",
+                Type: MapTaskTypeName(t.TaskType),
+                Status: MapTaskStatus(t.Status),
+                Progress: Math.Min(t.Completed + t.Failed, t.Total),
+                Total: t.Total,
+                CreatedAt: t.CreatedAt
+            ))
+            .ToList();
+    }
+
+    private static bool IsLimitedAccount(Account account)
+    {
+        var summary = (account.TelegramStatusSummary ?? string.Empty).Trim();
+        if (summary.Length == 0)
+            return false;
+
+        return summary.Contains("受限", StringComparison.OrdinalIgnoreCase)
+               || summary.Contains("冻结", StringComparison.OrdinalIgnoreCase)
+               || summary.Contains("探测失败", StringComparison.OrdinalIgnoreCase)
+               || summary.Contains("Restricted", StringComparison.OrdinalIgnoreCase)
+               || summary.Contains("FROZEN_METHOD_INVALID", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsBannedAccount(Account account)
+    {
+        var summary = (account.TelegramStatusSummary ?? string.Empty).Trim();
+        if (summary.Length == 0)
+            return false;
+
+        return summary.Contains("封禁", StringComparison.OrdinalIgnoreCase)
+               || summary.Contains("停用", StringComparison.OrdinalIgnoreCase)
+               || summary.Contains("注销", StringComparison.OrdinalIgnoreCase)
+               || summary.Contains("被删除", StringComparison.OrdinalIgnoreCase)
+               || summary.Contains("PHONE_NUMBER_BANNED", StringComparison.OrdinalIgnoreCase)
+               || summary.Contains("USER_DEACTIVATED_BAN", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task SyncAllAccounts()
+    {
+        if (_syncing)
+        {
+            Snackbar.Add("正在同步中，请稍候...", Severity.Warning);
+            return;
+        }
+
+        _syncing = true;
+        Snackbar.Add("开始同步频道和群组信息...", Severity.Info);
+
+        try
+        {
+            var summary = await DataSync.SyncAllActiveAccountsAsync(CancellationToken.None);
+
+            foreach (var failure in summary.AccountFailures)
+                Snackbar.Add($"账号 {failure.Phone} 同步失败：{failure.Error}", Severity.Warning);
+
+            Snackbar.Add($"同步完成：{summary.TotalChannelsSynced} 个频道，{summary.TotalGroupsSynced} 个群组", summary.AccountFailures.Count == 0 ? Severity.Success : Severity.Warning);
+            await LoadDashboardAsync();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"同步失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _syncing = false;
+        }
+    }
+
+    private Color GetStatusColor(string status) => status switch
+    {
+        "运行中" => Color.Info,
+        "已暂停" => Color.Warning,
+        "已完成" => Color.Success,
+        "失败" => Color.Error,
+        _ => Color.Default
+    };
+
+    private static string MapTaskStatus(string status) => status switch
+    {
+        "running" => "运行中",
+        "paused" => "已暂停",
+        "completed" => "已完成",
+        "failed" => "失败",
+        "pending" => "等待中",
+        _ => status
+    };
+
+    private static string MapTaskTypeName(string taskType) => taskType switch
+    {
+        BatchTaskTypes.BotChannelSetAdminsByAccount => "Bot频道批量设置管理员（账号执行）",
+        BatchTaskTypes.BotSetAdmins => "Bot频道批量设置管理员（机器人执行）",
+        _ => taskType
+    };
+
+    private record TaskItem(string Name, string Type, string Status, int Progress, int Total, DateTime CreatedAt);
+}

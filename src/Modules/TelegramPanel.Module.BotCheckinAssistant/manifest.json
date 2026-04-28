@@ -1,0 +1,15 @@
+{
+  "id": "community.bot-checkin-assistant",
+  "name": "Bot Check-in Assistant",
+  "version": "1.0.0",
+  "host": {
+    "min": "1.0.0",
+    "max": "2.0.0"
+  },
+  "dependencies": [],
+  "entry": {
+    "assembly": "TelegramPanel.Module.BotCheckinAssistant.dll",
+    "type": "TelegramPanel.Module.BotCheckinAssistant.BotCheckinAssistantModule"
+  }
+}
+

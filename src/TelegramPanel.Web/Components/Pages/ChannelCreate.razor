@@ -1,0 +1,238 @@
+﻿@page "/channels/create"
+@inject IChannelService ChannelService
+@inject AccountManagementService AccountManagement
+@inject TelegramPanel.Core.Services.AccountRiskService RiskService
+@inject ChannelManagementService ChannelManagement
+@inject ChannelGroupManagementService ChannelGroupManagement
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject IDialogService DialogService
+@using TelegramPanel.Data.Entities
+@using TelegramPanel.Web.Components.Dialogs
+
+<PageTitle>创建频道 - Telegram Panel</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">创建频道</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="8" Class="mx-auto">
+        <MudCard>
+            <MudCardContent>
+                <MudSelect @bind-Value="selectedAccountId" Label="选择账号" Variant="Variant.Outlined" Required="true">
+                    <MudSelectItem Value="0">-- 请选择账号 --</MudSelectItem>
+                    @foreach (var account in accounts)
+                    {
+                        <MudSelectItem Value="@account.Id">@FormatAccountLabel(account)</MudSelectItem>
+                    }
+                </MudSelect>
+
+                <MudSelect @bind-Value="selectedGroupId" Label="频道分组" Variant="Variant.Outlined" Class="mt-4">
+                    <MudSelectItem Value="0">未分组</MudSelectItem>
+                    @foreach (var group in channelGroups)
+                    {
+                        <MudSelectItem Value="@group.Id">@group.Name</MudSelectItem>
+                    }
+                </MudSelect>
+
+                <MudTextField @bind-Value="channelTitle" Label="频道名称" Variant="Variant.Outlined" Required="true" Class="mt-4"
+                              HelperText="最多255个字符" MaxLength="255" />
+
+                <MudTextField @bind-Value="channelAbout" Label="频道简介" Variant="Variant.Outlined" Lines="3" Class="mt-4"
+                              HelperText="最多255个字符" MaxLength="255" />
+
+                <MudSwitch @bind-Value="isPublic" Label="设为公开频道" Color="Color.Primary" Class="mt-4" />
+
+                @if (isPublic)
+                {
+                    <MudTextField @bind-Value="username" Label="频道用户名" Variant="Variant.Outlined" Class="mt-3"
+                                  Adornment="Adornment.Start" AdornmentText="&#64;" Required="true"
+                                  HelperText="5-32个字符,只能包含a-z、0-9和下划线" />
+                }
+
+                <MudDivider Class="my-4" />
+
+                <MudText Typo="Typo.h6" Class="mb-3">可选设置</MudText>
+
+                <MudSwitch @bind-Value="allowForwarding" Label="允许转发" Color="Color.Primary"
+                           HelperText="关闭后为“保护内容”，禁止转发/保存（等同 Telegram 的内容保护）" />
+            </MudCardContent>
+            <MudCardActions>
+                <MudButton Variant="Variant.Text" Color="Color.Default"
+                           OnClick="@(async (MouseEventArgs _) => await Cancel())">取消</MudButton>
+                <MudSpacer />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           Disabled="@(selectedAccountId == 0 || string.IsNullOrEmpty(channelTitle) || creating)"
+                           OnClick="@(async (MouseEventArgs _) => await CreateChannel())">
+                    @if (creating)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        <span>创建中...</span>
+                    }
+                    else
+                    {
+                        <span>创建频道</span>
+                    }
+                </MudButton>
+            </MudCardActions>
+        </MudCard>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private List<Account> accounts = new();
+    private List<ChannelGroup> channelGroups = new();
+    private int selectedAccountId = 0;
+    private int selectedGroupId = 0;
+    private string channelTitle = "";
+    private string channelAbout = "";
+    private bool isPublic = false;
+    private string username = "";
+    private bool allowForwarding = true;
+    private bool creating = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAccounts();
+        await LoadGroups();
+    }
+
+    private async Task LoadAccounts()
+    {
+        try
+        {
+            var accountList = await AccountManagement.GetActiveAccountsAsync();
+            accounts = accountList
+                .Where(a => a.Category?.ExcludeFromOperations != true)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"加载账号列表失败：{ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadGroups()
+    {
+        try
+        {
+            var groups = await ChannelGroupManagement.GetAllGroupsAsync();
+            channelGroups = groups.ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"加载频道分组失败：{ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task CreateChannel()
+    {
+        if (selectedAccountId == 0)
+        {
+            Snackbar.Add("请选择账号", Severity.Error);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(channelTitle))
+        {
+            Snackbar.Add("请输入频道名称", Severity.Error);
+            return;
+        }
+
+        if (isPublic && string.IsNullOrEmpty(username))
+        {
+            Snackbar.Add("公开频道需要设置用户名", Severity.Error);
+            return;
+        }
+
+        // 风控检查：创建频道是敏感操作
+        var account = await AccountManagement.GetAccountAsync(selectedAccountId);
+        if (account != null)
+        {
+            var riskCheck = RiskService.CheckLoginDuration(account);
+            if (riskCheck.IsRisky)
+            {
+                var parameters = new DialogParameters
+                {
+                    ["Message"] = riskCheck.Message,
+                    ["DetailedMessage"] = riskCheck.DetailedMessage,
+                    ["ShowRecommendations"] = true
+                };
+                var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium };
+                var dialog = DialogService.Show<RiskWarningDialog>("风控警告", parameters, options);
+                var result = await dialog.Result;
+                if (result.Canceled)
+                    return; // 用户取消操作
+            }
+        }
+
+        creating = true;
+
+        try
+        {
+            // 调用 Telegram API 创建频道
+            var channelInfo = await ChannelService.CreateChannelAsync(selectedAccountId, channelTitle, channelAbout, isPublic);
+
+            // 如果是公开频道，设置用户名
+            if (isPublic && !string.IsNullOrEmpty(username))
+            {
+                await ChannelService.SetChannelVisibilityAsync(selectedAccountId, channelInfo.TelegramId, true, username);
+            }
+
+            // 是否允许转发（关闭=保护内容）
+            if (!allowForwarding)
+            {
+                await ChannelService.SetForwardingAllowedAsync(selectedAccountId, channelInfo.TelegramId, allowed: false);
+            }
+
+            // 保存到数据库
+            var now = DateTime.UtcNow;
+            var channel = new Channel
+            {
+                TelegramId = channelInfo.TelegramId,
+                AccessHash = channelInfo.AccessHash,
+                Title = channelTitle,
+                Username = isPublic ? username : null,
+                IsBroadcast = channelInfo.IsBroadcast,
+                MemberCount = channelInfo.MemberCount,
+                About = channelAbout,
+                CreatorAccountId = selectedAccountId,
+                GroupId = selectedGroupId > 0 ? selectedGroupId : null,
+                CreatedAt = now,
+                SyncedAt = now,
+                SystemCreatedAtUtc = now
+            };
+
+            await ChannelManagement.CreateOrUpdateChannelAsync(channel);
+
+            Snackbar.Add($"频道 \"{channelTitle}\" 创建成功", Severity.Success);
+            Navigation.NavigateTo("/channels");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"创建失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            creating = false;
+        }
+    }
+
+    private Task Cancel()
+    {
+        Navigation.NavigateTo("/channels");
+        return Task.CompletedTask;
+    }
+
+    private static string FormatAccountLabel(Account account)
+    {
+        var nickname = string.IsNullOrWhiteSpace(account.Nickname) ? null : account.Nickname.Trim();
+        var username = string.IsNullOrWhiteSpace(account.Username) ? null : account.Username.Trim();
+
+        var namePart = nickname ?? account.Phone;
+        if (!string.IsNullOrWhiteSpace(username))
+            return $"{namePart} (@{username})";
+        return namePart;
+    }
+}
+
+

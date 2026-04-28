@@ -1,0 +1,333 @@
+@page "/bots"
+@inject BotManagementService BotManagement
+@inject TelegramBotApiClient BotApi
+@inject IConfiguration Configuration
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
+@using TelegramPanel.Data.Entities
+@using TelegramPanel.Web.Components.Dialogs
+
+<PageTitle>机器人管理 - Telegram Panel</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">机器人管理</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="6">
+        <MudCard>
+            <MudCardContent>
+                <MudText Typo="Typo.h6" Class="mb-2">新增机器人</MudText>
+                <MudTextField @bind-Value="newName" Label="名称" Variant="Variant.Outlined" Required="true" />
+                <MudTextField @bind-Value="newToken" Label="Bot Token" Variant="Variant.Outlined" Required="true" Class="mt-3" />
+                <MudTextField @bind-Value="newUsername" Label="用户名（可选）" Variant="Variant.Outlined" Placeholder="bot_username" Class="mt-3" />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@loading" Class="mt-3"
+                           OnClick="@(async (MouseEventArgs _) => await CreateBotAsync())">
+                    添加
+                </MudButton>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+
+    <MudItem xs="12" md="12">
+        <MudCard Class="mt-4">
+            <MudCardContent>
+                <MudTable Items="@bots" Hover="true" Breakpoint="Breakpoint.Sm" Loading="@loading">
+                    <ToolBarContent>
+                        <MudText Typo="Typo.h6">机器人 (@bots.Count)</MudText>
+                        <MudSpacer />
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh"
+                                   Disabled="@loading" OnClick="LoadBots">
+                            刷新
+                        </MudButton>
+                    </ToolBarContent>
+                    <HeaderContent>
+                        <MudTh>名称</MudTh>
+                        <MudTh>用户名</MudTh>
+                        <MudTh>可管理聊天数</MudTh>
+                        <MudTh>最后同步</MudTh>
+                        <MudTh>状态</MudTh>
+                        <MudTh>操作</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="名称">@context.Name</MudTd>
+                        <MudTd DataLabel="用户名">@(!string.IsNullOrWhiteSpace(context.Username) ? $"@{context.Username}" : "-")</MudTd>
+                        <MudTd DataLabel="可管理聊天数">@context.ChannelMembers.Count</MudTd>
+                        <MudTd DataLabel="最后同步"><PanelTime Value="context.LastSyncAt" /></MudTd>
+                        <MudTd DataLabel="状态">
+                            <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                <MudSwitch Value="@context.IsActive"
+                                           ValueChanged="@(async (bool v) => await SetBotActiveAsync(context, v))"
+                                           Disabled="@(loading || togglingBotIds.Contains(context.Id))"
+                                           Color="Color.Primary" />
+                                <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                                    @(context.IsActive ? "启用" : "停用")
+                                </MudChip>
+                            </MudStack>
+                        </MudTd>
+                        <MudTd DataLabel="操作">
+                                <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small">
+                                <MudMenuItem Icon="@Icons.Material.Filled.Edit"
+                                             OnClick="@(async () => await EditBotAsync(context))">
+                                    编辑
+                                </MudMenuItem>
+                                <MudMenuItem Icon="@Icons.Material.Filled.List"
+                                             OnClick="@(() => Navigation.NavigateTo($"/bots/channels?botId={context.Id}"))">
+                                    频道列表
+                                </MudMenuItem>
+                                <MudDivider />
+                                <MudMenuItem Icon="@Icons.Material.Filled.Delete" IconColor="Color.Error"
+                                             OnClick="@(async () => await DeleteBotAsync(context))">
+                                    删除
+                                </MudMenuItem>
+                            </MudMenu>
+                        </MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText>暂无机器人</MudText>
+                    </NoRecordsContent>
+                </MudTable>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private bool loading = true;
+    private List<Bot> bots = new();
+    private readonly HashSet<int> togglingBotIds = new();
+
+    private string newName = "";
+    private string newToken = "";
+    private string newUsername = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBots();
+    }
+
+    private async Task LoadBots()
+    {
+        loading = true;
+        try
+        {
+            var list = await BotManagement.GetAllBotsAsync();
+            bots = list.ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"加载失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task CreateBotAsync()
+    {
+        if (loading) return;
+        if (string.IsNullOrWhiteSpace(newName) || string.IsNullOrWhiteSpace(newToken))
+        {
+            Snackbar.Add("请填写名称和 Token", Severity.Warning);
+            return;
+        }
+
+        loading = true;
+        try
+        {
+            var name = (newName ?? string.Empty).Trim();
+            var tokenToRegister = (newToken ?? string.Empty).Trim();
+            var username = string.IsNullOrWhiteSpace(newUsername) ? null : newUsername.Trim();
+            await BotManagement.CreateBotAsync(name, tokenToRegister, username);
+            await TryRegisterWebhookForBotAsync(tokenToRegister, showSuccessToast: false);
+            newName = "";
+            newToken = "";
+            newUsername = "";
+            await LoadBots();
+            Snackbar.Add("机器人已创建", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"创建失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task DeleteBotAsync(Bot bot)
+    {
+        bool? result = await DialogService.ShowMessageBox(
+            "确认删除",
+            $"确定要删除机器人 {bot.Name} 吗？该机器人加入的频道关联也会一并删除。",
+            yesText: "删除", cancelText: "取消");
+
+        if (result != true)
+            return;
+
+        loading = true;
+        try
+        {
+            await BotManagement.DeleteBotAsync(bot.Id);
+            await LoadBots();
+            Snackbar.Add("删除成功", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"删除失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task SetBotActiveAsync(Bot bot, bool isActive)
+    {
+        if (loading)
+            return;
+
+        if (togglingBotIds.Contains(bot.Id))
+            return;
+
+        togglingBotIds.Add(bot.Id);
+        try
+        {
+            await BotManagement.SetBotActiveStatusAsync(bot.Id, isActive);
+            bot.IsActive = isActive;
+            if (isActive)
+                await TryRegisterWebhookForBotAsync(bot.Token, showSuccessToast: false);
+            else
+                await TryDeleteWebhookForBotAsync(bot.Token, showSuccessToast: false);
+            Snackbar.Add(isActive ? "已启用 Bot" : "已停用 Bot", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"更新失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            togglingBotIds.Remove(bot.Id);
+        }
+    }
+
+    private async Task EditBotAsync(Bot bot)
+    {
+        if (loading)
+            return;
+
+        var parameters = new DialogParameters
+        {
+            ["Bot"] = bot
+        };
+
+        var options = new DialogOptions
+        {
+            CloseButton = true,
+            MaxWidth = MaxWidth.Small,
+            FullWidth = true
+        };
+
+        var dialog = DialogService.Show<EditBotDialog>("编辑机器人", parameters, options)!;
+        var result = await dialog.Result;
+        if (result is null || result.Canceled)
+            return;
+
+        if (result.Data is not EditBotDialog.EditBotModel model)
+            return;
+
+        loading = true;
+        try
+        {
+            await BotManagement.UpdateBotProfileAsync(
+                botId: bot.Id,
+                name: model.Name,
+                username: model.Username,
+                newToken: model.NewToken);
+
+            if (!string.IsNullOrWhiteSpace(model.NewToken))
+                await TryRegisterWebhookForBotAsync(model.NewToken, showSuccessToast: true);
+
+            await LoadBots();
+            Snackbar.Add("已保存", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"保存失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task TryRegisterWebhookForBotAsync(string token, bool showSuccessToast)
+    {
+        var webhookEnabled = string.Equals(
+            Configuration["Telegram:WebhookEnabled"]?.Trim(),
+            "true",
+            StringComparison.OrdinalIgnoreCase);
+
+        if (!webhookEnabled)
+            return;
+
+        var normalizedToken = (token ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(normalizedToken))
+            return;
+
+        var baseUrl = (Configuration["Telegram:WebhookBaseUrl"] ?? "").Trim().TrimEnd('/');
+        var secretToken = (Configuration["Telegram:WebhookSecretToken"] ?? "").Trim();
+
+        if (string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(secretToken))
+        {
+            Snackbar.Add("已更换 Token，但 WebhookBaseUrl/WebhookSecretToken 未配置，无法自动重新注册 Webhook。", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            var pathToken = WebhookTokenHelper.ToWebhookPathToken(normalizedToken);
+            var webhookUrl = $"{baseUrl}/api/bot/webhook/{pathToken}";
+            await BotApi.SetWebhookAsync(
+                token: normalizedToken,
+                url: webhookUrl,
+                secretToken: secretToken,
+                allowedUpdates: BotUpdateHub.AllowedUpdatesJson,
+                cancellationToken: CancellationToken.None);
+
+            if (showSuccessToast)
+                Snackbar.Add("Webhook 已重新注册", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Token 已更换，但重新注册 Webhook 失败：{ex.Message}", Severity.Warning);
+        }
+    }
+
+    private async Task TryDeleteWebhookForBotAsync(string token, bool showSuccessToast)
+    {
+        var webhookEnabled = string.Equals(
+            Configuration["Telegram:WebhookEnabled"]?.Trim(),
+            "true",
+            StringComparison.OrdinalIgnoreCase);
+
+        if (!webhookEnabled)
+            return;
+
+        var normalizedToken = (token ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(normalizedToken))
+            return;
+
+        try
+        {
+            await BotApi.DeleteWebhookAsync(normalizedToken, dropPendingUpdates: false, cancellationToken: CancellationToken.None);
+            if (showSuccessToast)
+                Snackbar.Add("Webhook 已删除", Severity.Info);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"停用 Bot 后删除 Webhook 失败：{ex.Message}", Severity.Warning);
+        }
+    }
+}

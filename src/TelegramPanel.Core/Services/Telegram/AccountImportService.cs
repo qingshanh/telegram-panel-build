@@ -1,0 +1,887 @@
+using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using TelegramPanel.Core.Interfaces;
+using TelegramPanel.Core.Services;
+using TelegramPanel.Core.Utils;
+using TelegramPanel.Data.Entities;
+using System.IO.Compression;
+using WTelegram;
+
+namespace TelegramPanel.Core.Services.Telegram;
+
+/// <summary>
+/// 账号导入协调服务 - 整合Session导入和数据库保存
+/// </summary>
+public class AccountImportService
+{
+    private readonly ISessionImporter _sessionImporter;
+    private readonly AccountManagementService _accountManagement;
+    private readonly ILogger<AccountImportService> _logger;
+    private readonly IConfiguration _configuration;
+
+    public AccountImportService(
+        ISessionImporter sessionImporter,
+        AccountManagementService accountManagement,
+        ILogger<AccountImportService> logger,
+        IConfiguration configuration)
+    {
+        _sessionImporter = sessionImporter;
+        _accountManagement = accountManagement;
+        _logger = logger;
+        _configuration = configuration;
+    }
+
+    /// <summary>
+    /// 从浏览器上传的文件导入账号
+    /// </summary>
+    public async Task<List<ImportResult>> ImportFromBrowserFilesAsync(
+        IReadOnlyList<IBrowserFile> files,
+        int apiId,
+        string apiHash,
+        int? categoryId = null)
+    {
+        var results = new List<ImportResult>();
+
+        foreach (var file in files)
+        {
+            try
+            {
+                // 保存文件到临时目录
+                var tempPath = Path.Combine(Path.GetTempPath(), file.Name);
+                await using var fileStream = new FileStream(tempPath, FileMode.Create);
+                await file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024) // 10MB limit
+                    .CopyToAsync(fileStream);
+
+                fileStream.Close();
+
+                // 导入Session
+                var result = await _sessionImporter.ImportFromSessionFileAsync(tempPath, apiId, apiHash);
+
+                // 如果导入成功，保存到数据库
+                if (result.Success && result.UserId.HasValue)
+                {
+                    try
+                    {
+                        // 入库策略：按手机号 upsert（方便重复导入/替换 session）
+                        var phone = PhoneNumberFormatter.NormalizeToDigits(result.Phone);
+                        if (string.IsNullOrWhiteSpace(phone))
+                            throw new InvalidOperationException("导入结果缺少有效手机号");
+
+                        var existing = await _accountManagement.GetAccountByPhoneAsync(phone);
+                        if (existing != null)
+                        {
+                            existing.UserId = result.UserId.Value;
+                            existing.Username = result.Username;
+                            existing.SessionPath = result.SessionPath!;
+                            existing.ApiId = apiId;
+                            existing.ApiHash = apiHash.Trim();
+                            existing.IsActive = true;
+                            existing.CategoryId = categoryId ?? existing.CategoryId;
+                            existing.LastSyncAt = DateTime.UtcNow;
+                            await _accountManagement.UpdateAccountAsync(existing);
+                        }
+                        else
+                        {
+                            var account = new Account
+                            {
+                                Phone = phone,
+                                UserId = result.UserId.Value,
+                                Username = result.Username,
+                                SessionPath = result.SessionPath!,
+                                ApiId = apiId,
+                                ApiHash = apiHash.Trim(),
+                                IsActive = true,
+                                CategoryId = categoryId,
+                                CreatedAt = DateTime.UtcNow,
+                                LastSyncAt = DateTime.UtcNow
+                            };
+
+                            await _accountManagement.CreateAccountAsync(account);
+                        }
+
+                        _logger.LogInformation("Account saved to database: {Phone}", phone);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to save account to database: {Phone}", result.Phone);
+                        result = new ImportResult(
+                            false,
+                            result.Phone,
+                            result.UserId,
+                            result.Username,
+                            result.SessionPath,
+                            $"Session 已导入，但数据库保存失败：{FormatException(ex)}"
+                        );
+                    }
+                }
+
+                results.Add(result);
+
+                // 清理临时文件
+                try
+                {
+                    File.Delete(tempPath);
+                }
+                catch
+                {
+                    // 忽略临时文件删除失败
+                }
+
+                // 延迟避免频繁连接
+                await Task.Delay(500);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to process file: {FileName}", file.Name);
+                results.Add(new ImportResult(false, null, null, null, null, $"文件处理失败：{FormatException(ex)}"));
+            }
+        }
+
+        var successCount = results.Count(r => r.Success);
+        _logger.LogInformation("Browser file import completed: {Success}/{Total} successful", successCount, results.Count);
+
+        return results;
+    }
+
+    /// <summary>
+    /// 从StringSession导入账号
+    /// </summary>
+    public async Task<ImportResult> ImportFromStringSessionAsync(
+        string sessionString,
+        int apiId,
+        string apiHash,
+        int? categoryId = null)
+    {
+        var result = await _sessionImporter.ImportFromStringSessionAsync(sessionString, apiId, apiHash);
+
+        // 如果导入成功，保存到数据库
+        if (result.Success && result.UserId.HasValue)
+        {
+            try
+            {
+                var phone = PhoneNumberFormatter.NormalizeToDigits(result.Phone);
+                if (string.IsNullOrWhiteSpace(phone))
+                    throw new InvalidOperationException("导入结果缺少有效手机号");
+
+                var existing = await _accountManagement.GetAccountByPhoneAsync(phone);
+                if (existing != null)
+                {
+                    existing.UserId = result.UserId.Value;
+                    existing.Username = result.Username;
+                    existing.SessionPath = result.SessionPath!;
+                    existing.ApiId = apiId;
+                    existing.ApiHash = apiHash.Trim();
+                    existing.IsActive = true;
+                    existing.CategoryId = categoryId ?? existing.CategoryId;
+                    existing.LastSyncAt = DateTime.UtcNow;
+                    await _accountManagement.UpdateAccountAsync(existing);
+                }
+                else
+                {
+                    var account = new Account
+                    {
+                        Phone = phone,
+                        UserId = result.UserId.Value,
+                        Username = result.Username,
+                        SessionPath = result.SessionPath!,
+                        ApiId = apiId,
+                        ApiHash = apiHash.Trim(),
+                        IsActive = true,
+                        CategoryId = categoryId,
+                        CreatedAt = DateTime.UtcNow,
+                        LastSyncAt = DateTime.UtcNow
+                    };
+
+                    await _accountManagement.CreateAccountAsync(account);
+                }
+
+                _logger.LogInformation("Account saved to database: {Phone}", phone);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to save account to database: {Phone}", result.Phone);
+                return new ImportResult(false, result.Phone, result.UserId, result.Username, result.SessionPath,
+                    $"StringSession 已导入，但数据库保存失败：{FormatException(ex)}");
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// 从浏览器上传的 zip 压缩包导入账号（每个账号目录下包含一个 json + 一个 session）
+    /// </summary>
+    public async Task<List<ImportResult>> ImportFromZipAsync(
+        IBrowserFile zipFile,
+        int? categoryId = null,
+        string? twoFactorPassword = null)
+    {
+        var results = new List<ImportResult>();
+
+        if (zipFile == null)
+        {
+            results.Add(new ImportResult(false, null, null, null, null, "未选择压缩包文件"));
+            return results;
+        }
+
+        var tempZipPath = Path.Combine(Path.GetTempPath(), $"telegram-panel-import-{Guid.NewGuid():N}.zip");
+        var extractDir = Path.Combine(Path.GetTempPath(), $"telegram-panel-import-{Guid.NewGuid():N}");
+
+        try
+        {
+            Directory.CreateDirectory(extractDir);
+
+            await using (var fs = new FileStream(tempZipPath, FileMode.Create, FileAccess.Write, FileShare.None))
+            await using (var upload = zipFile.OpenReadStream(maxAllowedSize: 200 * 1024 * 1024))
+            {
+                await upload.CopyToAsync(fs);
+            }
+
+            // 注意：部分第三方打包工具会生成“目录条目但包含数据”的非标准 zip，
+            // ZipFile.ExtractToDirectory 会直接抛异常。这里改为手动解压并容错处理。
+            await ExtractZipToDirectorySafeAsync(tempZipPath, extractDir);
+
+            var tdataDirs = FindTdataDirectories(extractDir);
+            var allJsonFiles = Directory.EnumerateFiles(extractDir, "*.json", SearchOption.AllDirectories).ToList();
+            var jsonFiles = allJsonFiles
+                .Where(path => !IsPathInsideAnyDirectory(path, tdataDirs))
+                .ToList();
+
+            var skippedTdataJsonCount = allJsonFiles.Count - jsonFiles.Count;
+            if (skippedTdataJsonCount > 0)
+            {
+                _logger.LogInformation(
+                    "Skipping {Count} json files inside tdata directories during zip import",
+                    skippedTdataJsonCount);
+            }
+
+            if (jsonFiles.Count == 0)
+            {
+                if (tdataDirs.Count > 0)
+                {
+                    results.AddRange(await ImportFromTdataDirectoriesAsync(tdataDirs, categoryId, twoFactorPassword));
+                    var tdataSuccess = results.Count(r => r.Success);
+                    _logger.LogInformation("Tdata import completed: {Success}/{Total} successful", tdataSuccess, results.Count);
+                    return results;
+                }
+
+                results.Add(new ImportResult(false, null, null, null, null, "压缩包内未找到任何账号配置 json 或可识别的 tdata 目录"));
+                return results;
+            }
+
+            var importedPhones = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var jsonPath in jsonFiles)
+            {
+                var result = await ImportFromPackageEntryAsync(jsonPath, categoryId, twoFactorPassword);
+                if (result.Phone != null && !importedPhones.Add(result.Phone))
+                {
+                    results.Add(new ImportResult(false, result.Phone, result.UserId, result.Username, result.SessionPath, "重复账号已跳过"));
+                    continue;
+                }
+
+                results.Add(result);
+            }
+
+            var successCount = results.Count(r => r.Success);
+            _logger.LogInformation("Zip import completed: {Success}/{Total} successful", successCount, results.Count);
+            return results;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Zip import failed");
+            results.Add(new ImportResult(false, null, null, null, null, $"压缩包导入失败: {ex.Message}"));
+            return results;
+        }
+        finally
+        {
+            try { if (File.Exists(tempZipPath)) File.Delete(tempZipPath); } catch { }
+            try { if (Directory.Exists(extractDir)) Directory.Delete(extractDir, recursive: true); } catch { }
+        }
+    }
+
+    private async Task ExtractZipToDirectorySafeAsync(string zipPath, string destinationDirectory)
+    {
+        var destRoot = Path.GetFullPath(destinationDirectory);
+        Directory.CreateDirectory(destRoot);
+        var destRootWithSep = destRoot.EndsWith(Path.DirectorySeparatorChar)
+            ? destRoot
+            : destRoot + Path.DirectorySeparatorChar;
+
+        using var archive = ZipFile.OpenRead(zipPath);
+        foreach (var entry in archive.Entries)
+        {
+            if (string.IsNullOrWhiteSpace(entry.FullName))
+                continue;
+
+            var normalized = entry.FullName.Replace('\\', '/').TrimStart('/');
+            if (string.IsNullOrWhiteSpace(normalized))
+                continue;
+
+            // 目录条目：Name 为空或以分隔符结尾
+            if (string.IsNullOrEmpty(entry.Name) || normalized.EndsWith("/", StringComparison.Ordinal))
+            {
+                var dirRel = normalized.TrimEnd('/');
+                if (string.IsNullOrWhiteSpace(dirRel))
+                    continue;
+
+                var dirPath = Path.GetFullPath(Path.Combine(destRoot, dirRel));
+                if (!dirPath.StartsWith(destRootWithSep, StringComparison.OrdinalIgnoreCase) && !string.Equals(dirPath, destRoot, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException($"压缩包包含非法路径（Zip Slip）：{entry.FullName}");
+
+                Directory.CreateDirectory(dirPath);
+                continue;
+            }
+
+            var filePath = Path.GetFullPath(Path.Combine(destRoot, normalized));
+            if (!filePath.StartsWith(destRootWithSep, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"压缩包包含非法路径（Zip Slip）：{entry.FullName}");
+
+            Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+
+            try
+            {
+                await using var entryStream = entry.Open();
+                await using var outStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None);
+                await entryStream.CopyToAsync(outStream);
+            }
+            catch (Exception ex)
+            {
+                // 容错：单个条目失败不影响整体导入
+                _logger.LogWarning(ex, "Failed to extract zip entry: {Entry}", entry.FullName);
+            }
+        }
+    }
+
+    private async Task<ImportResult> ImportFromPackageEntryAsync(string jsonPath, int? categoryId, string? twoFactorPassword)
+    {
+        try
+        {
+            var json = await File.ReadAllTextAsync(jsonPath);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            if (!TryGetInt(root, out var apiId, "api_id", "app_id", "apiId", "appId"))
+                return new ImportResult(false, null, null, null, null, $"json 缺少 api_id: {jsonPath}");
+
+            if (!TryGetString(root, out var apiHash, "api_hash", "app_hash", "apiHash", "appHash") || string.IsNullOrWhiteSpace(apiHash))
+                return new ImportResult(false, null, null, null, null, $"json 缺少 api_hash: {jsonPath}");
+
+            if (!TryGetString(root, out var phone, "phone", "phone_number", "phoneNumber") || string.IsNullOrWhiteSpace(phone))
+            {
+                if (!TryInferPhone(root, jsonPath, out phone))
+                    return new ImportResult(false, null, null, null, null, $"json 缺少 phone: {jsonPath}");
+            }
+
+            phone = PhoneNumberFormatter.NormalizeToDigits(phone);
+            if (string.IsNullOrWhiteSpace(phone))
+                return new ImportResult(false, null, null, null, null, $"json phone 无效: {jsonPath}");
+
+            _ = TryGetLong(root, out var userId, "user_id", "uid", "userId");
+            _ = TryGetString(root, out var username, "username");
+            username = string.IsNullOrWhiteSpace(username) ? null : username.Trim();
+            _ = TryGetString(root, out var firstName, "first_name", "firstName");
+            _ = TryGetString(root, out var lastName, "last_name", "lastName");
+            var nickname = BuildNickname(firstName, lastName, username);
+            _ = TryGetString(root, out var sessionKey, "session_string", "sessionString");
+            sessionKey = string.IsNullOrWhiteSpace(sessionKey) ? null : sessionKey.Trim();
+
+            var dir = Path.GetDirectoryName(jsonPath) ?? extractDirFallback();
+            var baseName = Path.GetFileNameWithoutExtension(jsonPath);
+            var sessionCandidate = Path.Combine(dir, $"{baseName}.session");
+            if (!File.Exists(sessionCandidate))
+            {
+                sessionCandidate = Directory.EnumerateFiles(dir, "*.session", SearchOption.TopDirectoryOnly).FirstOrDefault()
+                    ?? string.Empty;
+            }
+
+            if (string.IsNullOrWhiteSpace(sessionCandidate) || !File.Exists(sessionCandidate))
+            {
+                return new ImportResult(false, phone, userId, username, null, "未找到对应的 .session 文件");
+            }
+
+            // 尝试从 2fa.txt 读取二级密码（优先于用户输入的统一密码）
+            var twoFaFromFile = await TryRead2faFileAsync(dir);
+            var effectiveTwoFactorPassword = !string.IsNullOrWhiteSpace(twoFaFromFile) ? twoFaFromFile : twoFactorPassword;
+
+            var sessionsPath = _configuration["Telegram:SessionsPath"] ?? "sessions";
+            Directory.CreateDirectory(sessionsPath);
+            var targetSessionPath = Path.Combine(sessionsPath, $"{phone}.session");
+
+            // 有些来源的 .session 实际上是 SQLite（Telethon/Pyrogram/Telegram Desktop 等），WTelegram 不能直接读取。
+            // 优先尝试使用 json 里的 session_string（映射到 WTelegram 的 session_key）来生成可用 session 文件。
+            if (LooksLikeSqliteSession(sessionCandidate))
+            {
+                SessionDataConverter.SessionConvertResult converted;
+                if (string.IsNullOrWhiteSpace(sessionKey))
+                {
+                    // 没有 session_string 也不阻挡：直接从 sqlite 里取 dc/auth_key 转换为 WTelegram session
+                    converted = await SessionDataConverter.TryCreateWTelegramSessionFromTelethonSqliteFileAsync(
+                        sqliteSessionPath: sessionCandidate,
+                        apiId: apiId,
+                        apiHash: apiHash.Trim(),
+                        targetSessionPath: targetSessionPath,
+                        phone: phone,
+                        userId: userId,
+                        logger: _logger);
+                }
+                else
+                {
+                    converted = await SessionDataConverter.TryCreateWTelegramSessionFromSessionStringAsync(
+                        sessionString: sessionKey,
+                        apiId: apiId,
+                        apiHash: apiHash.Trim(),
+                        targetSessionPath: targetSessionPath,
+                        phone: phone,
+                        userId: userId,
+                        logger: _logger);
+                }
+
+                if (!converted.Ok)
+                {
+                    var reason = converted.Reason ?? "未知原因";
+                    return new ImportResult(false, phone, userId, username, null,
+                        $"该 .session 为 SQLite 格式，但转换/校验失败：{reason}（通常表示账号已掉线/被登出/会话失效，需要重新登录生成新 session）");
+                }
+            }
+            else
+            {
+                File.Copy(sessionCandidate, targetSessionPath, overwrite: true);
+            }
+
+            // 入库：存在则更新，不存在则创建
+            var existing = await _accountManagement.GetAccountByPhoneAsync(phone);
+            if (existing != null)
+            {
+                existing.UserId = userId ?? existing.UserId;
+                existing.Username = username ?? existing.Username;
+                existing.Nickname = nickname ?? existing.Nickname;
+                existing.SessionPath = targetSessionPath;
+                existing.ApiId = apiId;
+                existing.ApiHash = apiHash.Trim();
+                existing.IsActive = true;
+                existing.LastSyncAt = DateTime.UtcNow;
+                // 仅在提供了二级密码时更新，避免覆盖已有密码
+                if (!string.IsNullOrWhiteSpace(effectiveTwoFactorPassword))
+                    existing.TwoFactorPassword = effectiveTwoFactorPassword.Trim();
+                await _accountManagement.UpdateAccountAsync(existing);
+            }
+            else
+            {
+                var account = new Account
+                {
+                    Phone = phone,
+                    UserId = userId ?? 0,
+                    Nickname = nickname,
+                    Username = username,
+                    SessionPath = targetSessionPath,
+                    ApiId = apiId,
+                    ApiHash = apiHash.Trim(),
+                    IsActive = true,
+                    CategoryId = categoryId,
+                    TwoFactorPassword = string.IsNullOrWhiteSpace(effectiveTwoFactorPassword) ? null : effectiveTwoFactorPassword.Trim(),
+                    CreatedAt = DateTime.UtcNow,
+                    LastSyncAt = DateTime.UtcNow
+                };
+
+                await _accountManagement.CreateAccountAsync(account);
+            }
+
+            return new ImportResult(true, phone, userId, username, targetSessionPath, null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to import package entry from {JsonPath}", jsonPath);
+            return new ImportResult(false, null, null, null, null, FormatException(ex));
+        }
+
+        string extractDirFallback() => Path.GetTempPath();
+    }
+
+    private async Task<List<ImportResult>> ImportFromTdataDirectoriesAsync(
+        IReadOnlyCollection<string> tdataDirectories,
+        int? categoryId,
+        string? twoFactorPassword)
+    {
+        var results = new List<ImportResult>();
+
+        if (!TryGetGlobalTelegramApi(out var apiId, out var apiHash))
+        {
+            results.Add(new ImportResult(
+                false,
+                null,
+                null,
+                null,
+                null,
+                "检测到 tdata 数据包，但系统未配置全局 Telegram API（ApiId/ApiHash）；请先到【系统设置】配置后再导入"));
+            return results;
+        }
+
+        var importedPhones = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var tdataDir in tdataDirectories.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var result = await ImportFromTdataDirectoryAsync(tdataDir, apiId, apiHash, categoryId, twoFactorPassword);
+            var normalizedPhone = PhoneNumberFormatter.NormalizeToDigits(result.Phone);
+            if (!string.IsNullOrWhiteSpace(normalizedPhone))
+            {
+                result = result with { Phone = normalizedPhone };
+                if (!importedPhones.Add(normalizedPhone))
+                {
+                    results.Add(new ImportResult(false, normalizedPhone, result.UserId, result.Username, result.SessionPath, "重复账号已跳过"));
+                    continue;
+                }
+            }
+
+            results.Add(result);
+        }
+
+        return results;
+    }
+
+    private async Task<ImportResult> ImportFromTdataDirectoryAsync(
+        string tdataDir,
+        int apiId,
+        string apiHash,
+        int? categoryId,
+        string? twoFactorPassword)
+    {
+        string? tempSessionPath = null;
+        try
+        {
+            var converted = await TdataSessionBridge.TryConvertToTelethonStringSessionAsync(tdataDir, _logger);
+            if (!converted.Ok || string.IsNullOrWhiteSpace(converted.SessionString))
+            {
+                return new ImportResult(false, null, converted.UserId, null, null,
+                    $"tdata 解析失败（{tdataDir}）：{converted.Error ?? "未知原因"}");
+            }
+
+            var phoneSeed = converted.UserId?.ToString() ?? Path.GetFileName(tdataDir);
+            if (string.IsNullOrWhiteSpace(phoneSeed))
+                phoneSeed = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString();
+
+            tempSessionPath = Path.Combine(Path.GetTempPath(), $"telegram-panel-tdata-{Guid.NewGuid():N}.session");
+            var writeResult = await SessionDataConverter.TryCreateWTelegramSessionFromSessionStringAsync(
+                sessionString: converted.SessionString,
+                apiId: apiId,
+                apiHash: apiHash,
+                targetSessionPath: tempSessionPath,
+                phone: phoneSeed,
+                userId: converted.UserId,
+                logger: _logger);
+            if (!writeResult.Ok)
+            {
+                return new ImportResult(false, null, converted.UserId, null, null,
+                    $"tdata 会话转换失败：{writeResult.Reason ?? "未知原因"}");
+            }
+
+            var imported = await _sessionImporter.ImportFromSessionFileAsync(
+                tempSessionPath,
+                apiId,
+                apiHash,
+                userId: converted.UserId,
+                phoneHint: phoneSeed,
+                sessionKey: apiHash);
+            if (!imported.Success)
+            {
+                return new ImportResult(
+                    false,
+                    imported.Phone,
+                    imported.UserId ?? converted.UserId,
+                    imported.Username,
+                    imported.SessionPath,
+                    $"tdata 导入失败：{imported.Error ?? "未知原因"}");
+            }
+
+            return await PersistImportedSessionAsync(imported, apiId, apiHash, categoryId, twoFactorPassword);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to import tdata directory: {TdataDir}", tdataDir);
+            return new ImportResult(false, null, null, null, null, $"tdata 导入异常：{FormatException(ex)}");
+        }
+        finally
+        {
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(tempSessionPath) && File.Exists(tempSessionPath))
+                    File.Delete(tempSessionPath);
+            }
+            catch
+            {
+                // 忽略临时文件删除失败
+            }
+        }
+    }
+
+    private async Task<ImportResult> PersistImportedSessionAsync(
+        ImportResult result,
+        int apiId,
+        string apiHash,
+        int? categoryId,
+        string? twoFactorPassword)
+    {
+        if (!result.Success || !result.UserId.HasValue)
+            return result;
+
+        try
+        {
+            var phone = PhoneNumberFormatter.NormalizeToDigits(result.Phone);
+            if (string.IsNullOrWhiteSpace(phone))
+                throw new InvalidOperationException("导入结果缺少有效手机号");
+
+            var existing = await _accountManagement.GetAccountByPhoneAsync(phone);
+            if (existing != null)
+            {
+                existing.UserId = result.UserId.Value;
+                existing.Username = result.Username;
+                existing.SessionPath = result.SessionPath!;
+                existing.ApiId = apiId;
+                existing.ApiHash = apiHash.Trim();
+                existing.IsActive = true;
+                existing.CategoryId = categoryId ?? existing.CategoryId;
+                existing.LastSyncAt = DateTime.UtcNow;
+                if (!string.IsNullOrWhiteSpace(twoFactorPassword))
+                    existing.TwoFactorPassword = twoFactorPassword.Trim();
+                await _accountManagement.UpdateAccountAsync(existing);
+            }
+            else
+            {
+                var account = new Account
+                {
+                    Phone = phone,
+                    UserId = result.UserId.Value,
+                    Username = result.Username,
+                    SessionPath = result.SessionPath!,
+                    ApiId = apiId,
+                    ApiHash = apiHash.Trim(),
+                    IsActive = true,
+                    CategoryId = categoryId,
+                    TwoFactorPassword = string.IsNullOrWhiteSpace(twoFactorPassword) ? null : twoFactorPassword.Trim(),
+                    CreatedAt = DateTime.UtcNow,
+                    LastSyncAt = DateTime.UtcNow
+                };
+
+                await _accountManagement.CreateAccountAsync(account);
+            }
+
+            _logger.LogInformation("Account saved to database: {Phone}", phone);
+            return result with { Phone = phone };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to save account to database: {Phone}", result.Phone);
+            return new ImportResult(
+                false,
+                result.Phone,
+                result.UserId,
+                result.Username,
+                result.SessionPath,
+                $"Session 已导入，但数据库保存失败：{FormatException(ex)}");
+        }
+    }
+
+    private bool TryGetGlobalTelegramApi(out int apiId, out string apiHash)
+    {
+        apiHash = (_configuration["Telegram:ApiHash"] ?? string.Empty).Trim();
+        return int.TryParse(_configuration["Telegram:ApiId"], out apiId)
+               && apiId > 0
+               && !string.IsNullOrWhiteSpace(apiHash);
+    }
+
+    private static bool IsPathInsideAnyDirectory(string filePath, IReadOnlyCollection<string> directories)
+    {
+        if (directories.Count == 0)
+            return false;
+
+        var fullFilePath = Path.GetFullPath(filePath);
+        foreach (var directory in directories)
+        {
+            var fullDirectoryPath = Path.GetFullPath(directory);
+            var fullDirectoryPathWithSep = fullDirectoryPath.EndsWith(Path.DirectorySeparatorChar)
+                ? fullDirectoryPath
+                : fullDirectoryPath + Path.DirectorySeparatorChar;
+
+            if (fullFilePath.StartsWith(fullDirectoryPathWithSep, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static List<string> FindTdataDirectories(string rootDirectory)
+    {
+        var result = new List<string>();
+        if (LooksLikeTdataDirectory(rootDirectory))
+            result.Add(rootDirectory);
+
+        foreach (var dir in Directory.EnumerateDirectories(rootDirectory, "*", SearchOption.AllDirectories))
+        {
+            if (LooksLikeTdataDirectory(dir))
+                result.Add(dir);
+        }
+
+        return result
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static bool LooksLikeTdataDirectory(string directory)
+    {
+        try
+        {
+            if (!Directory.Exists(directory))
+                return false;
+
+            var hasKeyFile = File.Exists(Path.Combine(directory, "key_datas"))
+                             || File.Exists(Path.Combine(directory, "key_data"));
+            var hasTdataData = Directory.EnumerateFileSystemEntries(directory, "D877F783D5D3EF8C*", SearchOption.TopDirectoryOnly).Any();
+            return hasKeyFile || hasTdataData;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 尝试从目录中读取 2fa.txt 文件内容作为二级密码
+    /// </summary>
+    private static async Task<string?> TryRead2faFileAsync(string directory)
+    {
+        try
+        {
+            // 支持多种常见文件名
+            var possibleNames = new[] { "2fa.txt", "2FA.txt", "2fa", "2FA", "twofa.txt", "password.txt" };
+            foreach (var name in possibleNames)
+            {
+                var filePath = Path.Combine(directory, name);
+                if (!File.Exists(filePath))
+                    continue;
+
+                var content = await File.ReadAllTextAsync(filePath);
+                var password = content?.Trim();
+                if (!string.IsNullOrWhiteSpace(password))
+                    return password;
+            }
+        }
+        catch
+        {
+            // 读取失败不影响导入流程
+        }
+
+        return null;
+    }
+
+    private static string? BuildNickname(string? firstName, string? lastName, string? username)
+    {
+        firstName = string.IsNullOrWhiteSpace(firstName) ? null : firstName.Trim();
+        lastName = string.IsNullOrWhiteSpace(lastName) ? null : lastName.Trim();
+        var display = string.Join(" ", new[] { firstName, lastName }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        if (!string.IsNullOrWhiteSpace(display))
+            return display;
+        return string.IsNullOrWhiteSpace(username) ? null : username.Trim();
+    }
+
+    private static bool TryInferPhone(System.Text.Json.JsonElement root, string jsonPath, out string? phone)
+    {
+        // 兼容一些导出：json 里 phone 可能为 null，但文件名/ session_file 会带 +手机号
+        if (!TryGetString(root, out phone, "session_file", "sessionFile") || string.IsNullOrWhiteSpace(phone))
+            phone = Path.GetFileNameWithoutExtension(jsonPath);
+
+        phone = string.IsNullOrWhiteSpace(phone) ? null : phone.Trim();
+        return !string.IsNullOrWhiteSpace(phone);
+    }
+
+    private static bool LooksLikeSqliteSession(string filePath)
+    {
+        try
+        {
+            using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            Span<byte> header = stackalloc byte[16];
+            var read = fs.Read(header);
+            if (read < 15) return false;
+            var text = System.Text.Encoding.ASCII.GetString(header[..15]);
+            return string.Equals(text, "SQLite format 3", StringComparison.Ordinal);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    // session_string 转换逻辑已收敛到 SessionDataConverter
+
+    private static bool TryGetString(System.Text.Json.JsonElement root, out string? value, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (root.TryGetProperty(name, out var prop) && prop.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                value = prop.GetString();
+                return true;
+            }
+        }
+
+        value = null;
+        return false;
+    }
+
+    private static bool TryGetInt(System.Text.Json.JsonElement root, out int value, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (root.TryGetProperty(name, out var prop))
+            {
+                if (prop.ValueKind == System.Text.Json.JsonValueKind.Number && prop.TryGetInt32(out value))
+                    return true;
+
+                if (prop.ValueKind == System.Text.Json.JsonValueKind.String && int.TryParse(prop.GetString(), out value))
+                    return true;
+            }
+        }
+
+        value = default;
+        return false;
+    }
+
+    private static bool TryGetLong(System.Text.Json.JsonElement root, out long? value, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (root.TryGetProperty(name, out var prop))
+            {
+                if (prop.ValueKind == System.Text.Json.JsonValueKind.Number && prop.TryGetInt64(out var l))
+                {
+                    value = l;
+                    return true;
+                }
+
+                if (prop.ValueKind == System.Text.Json.JsonValueKind.String && long.TryParse(prop.GetString(), out var ls))
+                {
+                    value = ls;
+                    return true;
+                }
+            }
+        }
+
+        value = null;
+        return false;
+    }
+
+    private static string FormatException(Exception ex)
+    {
+        // 把 inner exception 展开，避免 UI 只显示 “See the inner exception for details.”
+        var messages = new List<string>();
+        for (var current = ex; current != null; current = current.InnerException)
+        {
+            var msg = (current.Message ?? string.Empty).Trim();
+            if (!string.IsNullOrWhiteSpace(msg))
+                messages.Add(msg);
+
+            if (messages.Count >= 5)
+                break;
+        }
+
+        return messages.Count == 0 ? "未知错误" : string.Join(" | ", messages.Distinct());
+    }
+}

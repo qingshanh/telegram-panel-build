@@ -1,0 +1,411 @@
+@namespace TelegramPanel.Web.Components.Dialogs
+@inject BotManagementService BotManagement
+@inject BatchTaskManagementService TaskManagement
+@inject ISnackbar Snackbar
+@inject TelegramPanel.Web.Services.BotAdminPresetsService PresetsService
+@inject TelegramPanel.Web.Services.BotChannelAdminDefaultsService DefaultsService
+@inject IDialogService DialogService
+@using System.Linq
+@using System.Text.Json
+@using TelegramPanel.Core.BatchTasks
+@using TelegramPanel.Data.Entities
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="2">
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
+                请输入要设置为管理员的 Telegram 用户 ID（不是手机号/用户名）。机器人需要在目标频道具备"添加管理员/添加新管理员"权限，否则会失败。提交后在后台执行，关闭/刷新页面不影响任务。
+            </MudAlert>
+
+            <MudGrid Spacing="2">
+                <MudItem xs="12" sm="8">
+                    <MudSelect T="string" Value="@selectedPresetName" ValueChanged="OnPresetChanged"
+                               Label="管理员预设" Variant="Variant.Outlined" Dense="true" Disabled="@saving">
+                        <MudSelectItem Value="@string.Empty">（不使用预设）</MudSelectItem>
+                        @foreach (var p in Presets)
+                        {
+                            <MudSelectItem Value="@p.Name">@p.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4" Class="d-flex align-center">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="DeleteSelectedPreset"
+                               Disabled="@(saving || string.IsNullOrWhiteSpace(selectedPresetName))">
+                        删除预设
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+
+            <MudTextField @bind-Value="userIdInput" Label="用户 ID（支持多条）" Variant="Variant.Outlined" Required="true"
+                          Lines="6"
+                          HelperText="每行一个用户 ID（可粘贴多行）"
+                          Placeholder="@("例如：\n123456789\n987654321")" />
+
+            <MudGrid Spacing="2">
+                <MudItem xs="12" sm="8">
+                    <MudTextField @bind-Value="presetNameToSave" Label="保存当前 ID 为预设组（名称）"
+                                  Variant="Variant.Outlined" Dense="true" Disabled="@saving" />
+                </MudItem>
+                <MudItem xs="12" sm="4" Class="d-flex align-center">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SavePreset"
+                               Disabled="@(saving || string.IsNullOrWhiteSpace(presetNameToSave))">
+                        保存为预设
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+
+            <MudAlert Severity="Severity.Normal" Variant="Variant.Outlined" Dense="true">
+                <strong>如何获取用户 ID？</strong>
+                <ol style="margin: 8px 0 0 0; padding-left: 20px;">
+                    <li>打开网页版：登录 <a href="https://web.telegram.org" target="_blank" style="color: #1976d2;">Telegram 网页版 (web.telegram.org)</a></li>
+                    <li>找到联系人：点击进入你想查询的用户的私聊窗口</li>
+                    <li>查看链接：在浏览器地址栏中，链接最后的那串数字（如 web.telegram.org 中的 <code>123456789</code>）就是对方的 UserID</li>
+                </ol>
+            </MudAlert>
+
+            <MudText Typo="Typo.subtitle2" Class="mt-2">权限</MudText>
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudCheckBox @bind-Value="rights.ManageChat" Label="管理频道" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudCheckBox @bind-Value="rights.ChangeInfo" Label="修改频道信息" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudCheckBox @bind-Value="rights.InviteUsers" Label="邀请用户" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudCheckBox @bind-Value="rights.PostMessages" Label="发布消息" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudCheckBox @bind-Value="rights.EditMessages" Label="编辑消息" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudCheckBox @bind-Value="rights.DeleteMessages" Label="删除消息" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudCheckBox @bind-Value="rights.PinMessages" Label="置顶消息" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudCheckBox @bind-Value="rights.RestrictMembers" Label="封禁成员" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudCheckBox @bind-Value="rights.PromoteMembers" Label="添加管理员" />
+                </MudItem>
+            </MudGrid>
+
+            <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsDefaultRightsAsync" Disabled="@saving">保存为默认权限</MudButton>
+            </MudStack>
+
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                将对已选频道批量执行 promoteChatMember；失败明细会完整记录到任务详情（按频道聚合并换行展示）。
+            </MudText>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="Cancel" Disabled="@saving">取消</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="@saving">
+            @if (saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                <span>提交中...</span>
+            }
+            else
+            {
+                <span>提交后台任务</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code
+{
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public int BotId { get; set; }
+    [Parameter] public IReadOnlyList<long> ChannelTelegramIds { get; set; } = Array.Empty<long>();
+
+    private string userIdInput = "";
+    private string selectedPresetName = "";
+    private string presetNameToSave = "";
+    private bool saving;
+
+    private RightsModel rights = new();
+    private List<TelegramPanel.Web.Services.BotAdminPreset> Presets { get; set; } = new();
+
+    private TelegramPanel.Core.Services.Telegram.BotTelegramService.BotAdminRights SelectedRights => new(
+        ManageChat: rights.ManageChat,
+        ChangeInfo: rights.ChangeInfo,
+        PostMessages: rights.PostMessages,
+        EditMessages: rights.EditMessages,
+        DeleteMessages: rights.DeleteMessages,
+        InviteUsers: rights.InviteUsers,
+        RestrictMembers: rights.RestrictMembers,
+        PinMessages: rights.PinMessages,
+        PromoteMembers: rights.PromoteMembers
+    );
+
+    protected override async Task OnInitializedAsync()
+    {
+        // 默认权限：优先读取上次保存的默认值；否则给出一个"常用"权限组合，减少操作成本
+        var defaults = await DefaultsService.GetAsync();
+        if (defaults?.Rights != null)
+        {
+            ApplyRights(defaults.Rights);
+        }
+        else
+        {
+            rights.ManageChat = true;
+            rights.ChangeInfo = true;
+            rights.InviteUsers = true;
+        }
+
+        await ReloadPresetsAsync();
+    }
+
+    private void ApplyRights(TelegramPanel.Core.Services.Telegram.BotTelegramService.BotAdminRights selected)
+    {
+        rights = new RightsModel
+        {
+            ManageChat = selected.ManageChat,
+            ChangeInfo = selected.ChangeInfo,
+            PostMessages = selected.PostMessages,
+            EditMessages = selected.EditMessages,
+            DeleteMessages = selected.DeleteMessages,
+            InviteUsers = selected.InviteUsers,
+            RestrictMembers = selected.RestrictMembers,
+            PinMessages = selected.PinMessages,
+            PromoteMembers = selected.PromoteMembers
+        };
+    }
+
+    private async Task SaveAsDefaultRightsAsync()
+    {
+        try
+        {
+            await DefaultsService.SaveAsync(new TelegramPanel.Web.Services.BotChannelAdminDefaults(SelectedRights));
+            Snackbar.Add("已保存为默认权限", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"保存默认权限失败：{ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ReloadPresetsAsync()
+    {
+        Presets = (await PresetsService.GetPresetsAsync())
+            .Where(x => !string.IsNullOrWhiteSpace(x.Name) && x.UserIds.Count > 0)
+            .ToList();
+    }
+
+    private Task OnPresetChanged(string value)
+    {
+        selectedPresetName = value ?? "";
+        if (string.IsNullOrWhiteSpace(selectedPresetName))
+            return Task.CompletedTask;
+
+        var preset = Presets.FirstOrDefault(p => string.Equals(p.Name, selectedPresetName, StringComparison.OrdinalIgnoreCase));
+        if (preset != null)
+        {
+            userIdInput = string.Join(Environment.NewLine, preset.UserIds);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task SavePreset()
+    {
+        var name = (presetNameToSave ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            Snackbar.Add("请输入预设名称", Severity.Warning);
+            return;
+        }
+
+        var userIds = ParseUserIds(userIdInput);
+        if (userIds.Count == 0)
+        {
+            Snackbar.Add("请输入用户 ID", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            await PresetsService.SavePresetAsync(name, userIds);
+            await ReloadPresetsAsync();
+            selectedPresetName = name;
+            Snackbar.Add($"已保存预设：{name}", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"保存预设失败：{ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteSelectedPreset()
+    {
+        if (string.IsNullOrWhiteSpace(selectedPresetName))
+            return;
+
+        bool? ok = await DialogService.ShowMessageBox(
+            title: "删除预设",
+            message: $"确定删除预设“{selectedPresetName}”吗？",
+            yesText: "删除",
+            cancelText: "取消");
+
+        if (ok != true)
+            return;
+
+        try
+        {
+            await PresetsService.DeletePresetAsync(selectedPresetName);
+            selectedPresetName = "";
+            Snackbar.Add("已删除预设", Severity.Success);
+            await ReloadPresetsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"删除预设失败：{ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task Save()
+    {
+        if (saving)
+            return;
+
+        if (BotId <= 0)
+        {
+            Snackbar.Add("BotId 无效", Severity.Error);
+            return;
+        }
+
+        if (ChannelTelegramIds.Count == 0)
+        {
+            Snackbar.Add("请先选择频道", Severity.Warning);
+            return;
+        }
+
+        var userIds = ParseUserIds(userIdInput);
+        if (userIds.Count == 0)
+        {
+            Snackbar.Add("请输入用户 ID", Severity.Warning);
+            return;
+        }
+
+        saving = true;
+        try
+        {
+            var channelIds = ChannelTelegramIds.Distinct().ToList();
+            var channels = await ResolveChannelItemsAsync(channelIds);
+            var rightsArg = SelectedRights;
+
+            var config = new BotSetAdminsTaskConfig
+            {
+                BotId = BotId,
+                UserIds = userIds,
+                Channels = channels,
+                Rights = new BotSetAdminsRightsPayload
+                {
+                    ManageChat = rightsArg.ManageChat,
+                    ChangeInfo = rightsArg.ChangeInfo,
+                    PostMessages = rightsArg.PostMessages,
+                    EditMessages = rightsArg.EditMessages,
+                    DeleteMessages = rightsArg.DeleteMessages,
+                    InviteUsers = rightsArg.InviteUsers,
+                    RestrictMembers = rightsArg.RestrictMembers,
+                    PinMessages = rightsArg.PinMessages,
+                    PromoteMembers = rightsArg.PromoteMembers
+                },
+                RequestedAtUtc = DateTime.UtcNow
+            };
+
+            var task = new BatchTask
+            {
+                TaskType = BatchTaskTypes.BotSetAdmins,
+                Total = channelIds.Count * userIds.Count,
+                Completed = 0,
+                Failed = 0,
+                Config = JsonSerializer.Serialize(config, new JsonSerializerOptions
+                {
+                    WriteIndented = true
+                })
+            };
+
+            var created = await TaskManagement.CreateTaskAsync(task);
+            Snackbar.Add($"已提交后台任务 #{created.Id}。关闭或刷新页面不影响执行，可到【任务中心】查看进度与失败明细。", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(created.Id));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"提交失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task<List<BotTaskChannelItem>> ResolveChannelItemsAsync(IReadOnlyCollection<long> channelIds)
+    {
+        var titleById = (await BotManagement.GetChatsAsync(BotId))
+            .Where(x => channelIds.Contains(x.TelegramId))
+            .GroupBy(x => x.TelegramId)
+            .ToDictionary(
+                x => x.Key,
+                x =>
+                {
+                    var title = (x.First().Title ?? string.Empty).Trim();
+                    return string.IsNullOrWhiteSpace(title) ? x.Key.ToString() : title;
+                });
+
+        return channelIds
+            .Select(id => new BotTaskChannelItem
+            {
+                TelegramId = id,
+                Title = titleById.TryGetValue(id, out var title) ? title : id.ToString()
+            })
+            .ToList();
+    }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    private static List<long> ParseUserIds(string? input)
+    {
+        var list = new List<long>();
+        var raw = (input ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(raw))
+            return list;
+
+        // UI 提示：每行一个 ID；解析时仍做宽松处理，避免粘贴时带上空格/逗号导致失败
+        var parts = raw.Split(new[] { '\r', '\n', ',', '，', ';', '；', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var p in parts)
+        {
+            var s = p.Trim();
+            if (string.IsNullOrWhiteSpace(s))
+                continue;
+
+            if (long.TryParse(s, out var id) && id > 0)
+                list.Add(id);
+        }
+
+        return list.Distinct().ToList();
+    }
+
+    private sealed class RightsModel
+    {
+        public bool ManageChat { get; set; }
+        public bool ChangeInfo { get; set; }
+        public bool PostMessages { get; set; }
+        public bool EditMessages { get; set; }
+        public bool DeleteMessages { get; set; }
+        public bool InviteUsers { get; set; }
+        public bool RestrictMembers { get; set; }
+        public bool PinMessages { get; set; }
+        public bool PromoteMembers { get; set; }
+    }
+}

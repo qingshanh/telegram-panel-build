@@ -1,0 +1,1531 @@
+@page "/accounts"
+@inject AccountManagementService AccountManagement
+@inject AccountCategoryManagementService CategoryManagement
+@inject AccountTelegramToolsService AccountTelegramTools
+@inject TelegramPanel.Core.Services.AccountRiskService RiskService
+@inject PanelTimeZoneService TimeZone
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
+@using TelegramPanel.Data.Entities
+@using TelegramPanel.Core.Models
+@using TelegramPanel.Web.Components.Dialogs
+@implements IDisposable
+
+<PageTitle>账号列表 - Telegram Panel</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4 tp-page-title">账号列表</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="0" Outlined="true">
+    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Style="flex-wrap: wrap;">
+        <MudSelect @bind-Value="filterCategoryId" @bind-Value:after="OnFiltersChanged" Label="分类" Variant="Variant.Outlined" Dense="true"
+                   Class="tp-input-full-xs"
+                   Style="min-width: 180px; flex: 0 1 220px;">
+            <MudSelectItem Value="0">全部分类</MudSelectItem>
+            @foreach (var c in categories)
+            {
+                <MudSelectItem Value="@c.Id">@c.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudCheckBox T="bool"
+                     @bind-Value="onlyWaste"
+                     @bind-Value:after="OnFiltersChanged"
+                     Dense="true"
+                     Label="只看废号"
+                     Class="tp-input-full-xs"
+                     Style="min-width: 140px; flex: 0 1 160px;" />
+        <MudTextField @bind-Value="searchString" Placeholder="搜索账号..." Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0 tp-input-full-xs"
+                      Style="min-width: 200px; flex: 1; max-width: 400px;"
+                      Immediate="true" @bind-Value:after="OnSearchChanged" />
+        
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh"
+                   Disabled="@loading" OnClick="ReloadTable" Size="Size.Small" Class="tp-input-full-xs">
+            刷新列表
+        </MudButton>
+    </MudStack>
+</MudPaper>
+
+<MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-2" Style="flex-wrap: wrap;">
+    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@SelectionToggleIcon"
+               Disabled="@(loading || accounts.Count == 0)" OnClick="CycleSelectionToggle" Size="Size.Small">
+        @SelectionToggleText
+    </MudButton>
+    <MudButton Variant="Variant.Outlined" Color="Color.Info" StartIcon="@Icons.Material.Filled.Sync"
+               Disabled="@(loading || selectedAccounts.Count == 0)" OnClick="BatchRefreshTelegramStatus" Size="Size.Small">
+        刷新已选状态
+    </MudButton>
+    <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Devices"
+               Disabled="@(loading || selectedAccounts.Count == 0)" OnClick="BatchKickAllOtherDevices" Size="Size.Small">
+        踢出其他设备（已选）
+    </MudButton>
+    <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.DeleteSweep"
+               Disabled="@(loading || selectedAccounts.Count == 0)" OnClick="CleanupSelectedWasteAccounts" Size="Size.Small">
+        清理废号（已选）
+    </MudButton>
+    @if (onlyWaste)
+    {
+        <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.DeleteSweep"
+                   Disabled="@(loading || accounts.Count == 0)" OnClick="CleanupFilteredWasteAccounts" Size="Size.Small">
+            清理废号（筛选）
+        </MudButton>
+    }
+    <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.DeleteSweep"
+               Disabled="@loading" OnClick="CleanupAllWasteAccounts" Size="Size.Small">
+        清理所有废号
+    </MudButton>
+    
+    <MudMenu Label="批量操作" Variant="Variant.Outlined" Color="Color.Default" StartIcon="@Icons.Material.Filled.MoreHoriz" 
+             Size="Size.Small" Disabled="@loading" Dense="true" EndIcon="@Icons.Material.Filled.KeyboardArrowDown">
+         <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchJoinSubscribe">批量加群/订阅/启用Bot（已选）</MudMenuItem>
+         <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchLeaveUnsubscribe">批量退群/退订/停用Bot（已选）</MudMenuItem>
+         <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchChangeTwoFactorPassword">修改二级密码（已选）</MudMenuItem>
+         <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchChangeTwoFactorRecoveryEmail">批量换绑邮箱（找回+登录）（Cloud Mail）（已选）</MudMenuItem>
+         <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="BatchKickAllOtherDevices">批量踢出所有其他设备（已选）</MudMenuItem>
+         <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchSetAccountCategory">批量修改分类（已选）</MudMenuItem>
+         <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchChangeNickname">批量改昵称（已选）</MudMenuItem>
+         <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchChangeAvatar">批量改头像（已选）</MudMenuItem>
+         <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchChangeUsername">批量改用户名（已选）</MudMenuItem>
+         <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="OpenBatchChangeBio">批量改Bio（已选）</MudMenuItem>
+        <MudMenuItem Disabled="@(selectedAccounts.Count == 0)" OnClick="DeleteSelectedAccounts">删除已选</MudMenuItem>
+        <MudMenuItem OnClick="ExportSelectedAccountsAsync">导出已选</MudMenuItem>
+        <MudMenuItem OnClick="ExportCurrentPageAccountsAsync">导出当前页</MudMenuItem>
+    </MudMenu>
+    
+    @if (selectedAccounts.Count > 0)
+    {
+        <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="ml-2">已选 @selectedAccounts.Count</MudChip>
+    }
+    else
+    {
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="ml-2">共 @totalCount 个账号</MudText>
+    }
+</MudStack>
+
+<MudCard>
+    <MudCardContent>
+        <MudTable ServerData="LoadAccountsServerData" Hover="true" Breakpoint="Breakpoint.Sm" Loading="@loading"
+                  Class="tp-table"
+                  MultiSelection="true" @bind-SelectedItems="selectedAccounts" @ref="_table">
+            <HeaderContent>
+                <MudTh>手机号</MudTh>
+                <MudTh>昵称</MudTh>
+                <MudTh>用户名</MudTh>
+                <MudTh>备注</MudTh>
+                <MudTh>用户ID</MudTh>
+                <MudTh>分类</MudTh>
+                <MudTh>频道/群组</MudTh>
+                <MudTh>状态</MudTh>
+                <MudTh>Telegram 状态</MudTh>
+                <MudTh>注册时间（估算，非百分百正确）</MudTh>
+                <MudTh>最后数据同步</MudTh>
+                <MudTh Style="min-width: 180px;">操作</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="手机号">@context.DisplayPhone</MudTd>
+                <MudTd DataLabel="昵称">@(context.Nickname ?? "-")</MudTd>
+                <MudTd DataLabel="用户名">@(context.Username ?? "-")</MudTd>
+                <MudTd DataLabel="备注">
+                    @if (string.IsNullOrWhiteSpace(context.Remark))
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Default">-</MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2"
+                                 title="@context.Remark"
+                                 Style="max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block;">
+                            @context.Remark
+                        </MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="用户ID">@context.UserId</MudTd>
+                <MudTd DataLabel="分类">
+                    @if (context.Category != null)
+                    {
+                        <MudChip T="string" Size="Size.Small" Style="@($"background-color: {context.Category.Color ?? "#9E9E9E"}")">
+                            @context.Category.Name
+                        </MudChip>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Default">未分类</MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="频道/群组">
+                    <MudText Typo="Typo.body2">@context.ChannelCount / @context.GroupCount</MudText>
+                </MudTd>
+                <MudTd DataLabel="状态">
+                    <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)">
+                        @(context.IsActive ? "活跃" : "停用")
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Telegram 状态">
+                    @if (telegramStatus.TryGetValue(context.Id, out var s))
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="@(s.Ok ? Color.Success : Color.Error)" title="@(BuildTelegramStatusTitle(s))">
+                            @s.Summary
+                        </MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default">未检测</MudChip>
+                    }
+                </MudTd>
+                <MudTd DataLabel="注册时间（估算，非百分百正确）"><PanelTime Value="context.EstimatedRegistrationAt" EmptyText="-" /></MudTd>
+                <MudTd DataLabel="最后数据同步"><PanelTime Value="context.LastSyncAt" /></MudTd>
+                <MudTd DataLabel="操作">
+                    <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Style="flex-wrap: wrap;">
+                        <MudIconButton Icon="@Icons.Material.Filled.Info" Size="Size.Small" Color="Color.Info"
+                                       OnClick="@(() => ShowDetails(context))" title="查看详情" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Info"
+                                       Disabled="@loading" OnClick="@(() => OpenEditUserProfile(context))" title="编辑用户资料" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Sync" Size="Size.Small" Color="Color.Primary"
+                                       Disabled="@loading" OnClick="@(() => RefreshTelegramStatus(context))" title="刷新 Telegram 状态" />
+                        
+                        <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Dense="true">
+                             <MudMenuItem Icon="@Icons.Material.Filled.GroupAdd" Disabled="@loading" OnClick="@(() => OpenJoinSubscribe(context))">加群/订阅</MudMenuItem>
+                             <MudMenuItem Icon="@Icons.Material.Filled.ExitToApp" Disabled="@loading" OnClick="@(() => OpenLeaveUnsubscribe(context))">退群/退订</MudMenuItem>
+                             <MudMenuItem Icon="@Icons.Material.Filled.Campaign" Disabled="@loading" OnClick="@(() => OpenAccountChannels(context))">查看加入的频道</MudMenuItem>
+                             <MudMenuItem Icon="@Icons.Material.Filled.Forum" Disabled="@loading" OnClick="@(() => OpenAccountGroups(context))">查看加入的群组</MudMenuItem>
+                             <MudMenuItem Icon="@Icons.Material.Filled.MarkEmailUnread" Disabled="@loading" OnClick="@(() => OpenSystemInbox(context))">系统通知（验证码）</MudMenuItem>
+                             <MudMenuItem Icon="@Icons.Material.Filled.Devices" Disabled="@loading" OnClick="@(() => OpenDevices(context))">在线设备</MudMenuItem>
+                              <MudDivider />
+                              <MudMenuItem Icon="@Icons.Material.Filled.Password" Disabled="@loading" OnClick="@(() => OpenChangeTwoFactorPassword(context))">修改二级密码</MudMenuItem>
+                              <MudMenuItem Icon="@Icons.Material.Filled.AlternateEmail" Disabled="@loading" OnClick="@(() => OpenChangeTwoFactorRecoveryEmail(context))">绑定/换绑找回邮箱</MudMenuItem>
+                              <MudMenuItem Icon="@Icons.Material.Filled.Email" Disabled="@loading" OnClick="@(() => OpenChangeLoginEmail(context))">绑定/换绑登录邮箱</MudMenuItem>
+                              <MudDivider />
+                               <MudMenuItem Icon="@(context.IsActive ? Icons.Material.Filled.Stop : Icons.Material.Filled.PlayArrow)"
+                                            Disabled="@loading"
+                                            OnClick="@(() => ToggleActive(context))">
+                                  @(context.IsActive ? "停用" : "启用")
+                              </MudMenuItem>
+                              <MudMenuItem Icon="@Icons.Material.Filled.Delete" Disabled="@loading" OnClick="@(() => DeleteAccount(context))">删除账号</MudMenuItem>
+                        </MudMenu>
+                    </MudStack>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>暂无账号数据，请先<MudLink Href="/accounts/import">导入账号</MudLink></MudText>
+            </NoRecordsContent>
+            <LoadingContent>
+                <MudProgressCircular Indeterminate="true" />
+            </LoadingContent>
+            <PagerContent>
+                <MudTablePager PageSizeOptions="new int[] { 20, 50, 100, 200 }" />
+            </PagerContent>
+        </MudTable>
+    </MudCardContent>
+</MudCard>
+
+@code {
+    private MudTable<Account>? _table;
+    private List<Account> accounts = new();
+    private List<AccountCategory> categories = new();
+    private int totalCount;
+    private bool loading = true;
+    private string searchString = "";
+    private int filterCategoryId = 0;
+    private bool onlyWaste;
+    private readonly Dictionary<int, TelegramAccountStatusResult> telegramStatus = new();
+    private HashSet<Account> selectedAccounts = new();
+    private readonly CancellationTokenSource _pageCts = new();
+    private CancellationTokenSource? _searchDebounceCts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCategories();
+    }
+
+    private async Task LoadCategories()
+    {
+        try
+        {
+            var list = await CategoryManagement.GetAllCategoriesAsync();
+            categories = list.ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"加载分类失败：{ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task<TableData<Account>> LoadAccountsServerData(TableState state, CancellationToken cancellationToken)
+    {
+        loading = true;
+        try
+        {
+            var categoryId = filterCategoryId <= 0 ? (int?)null : filterCategoryId;
+            var (items, total) = await AccountManagement.QueryAccountsPagedAsync(
+                categoryId: categoryId,
+                search: searchString,
+                onlyWaste: onlyWaste,
+                pageIndex: state.Page,
+                pageSize: state.PageSize,
+                cancellationToken: cancellationToken);
+
+            accounts = items.ToList();
+            totalCount = total;
+
+            // 从数据库字段恢复“Telegram 状态”缓存（仅需要当前页）
+            foreach (var a in accounts)
+            {
+                if (!a.TelegramStatusCheckedAtUtc.HasValue)
+                    continue;
+                if (string.IsNullOrWhiteSpace(a.TelegramStatusSummary))
+                    continue;
+
+                telegramStatus[a.Id] = new TelegramAccountStatusResult(
+                    Ok: a.TelegramStatusOk ?? false,
+                    Summary: a.TelegramStatusSummary,
+                    Details: a.TelegramStatusDetails,
+                    CheckedAtUtc: a.TelegramStatusCheckedAtUtc.Value);
+            }
+
+            // 翻页/筛选时清空选择（与 WordPress 列表行为一致，避免跨页误操作）
+            selectedAccounts.Clear();
+
+            return new TableData<Account> { Items = accounts, TotalItems = totalCount };
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"加载失败：{ex.Message}", Severity.Error);
+            return new TableData<Account> { Items = Array.Empty<Account>(), TotalItems = 0 };
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task ReloadTable()
+    {
+        selectedAccounts.Clear();
+        if (_table != null)
+            await _table.ReloadServerData();
+    }
+
+    private async Task OnFiltersChanged()
+    {
+        // 筛选改变时回到第一页更符合直觉，但 MudTable API 不同版本可能不同；这里仅触发刷新
+        await ReloadTable();
+    }
+
+    private async Task OnSearchChanged()
+    {
+        _searchDebounceCts?.Cancel();
+        _searchDebounceCts?.Dispose();
+        _searchDebounceCts = new CancellationTokenSource();
+
+        var token = _searchDebounceCts.Token;
+        try
+        {
+            await Task.Delay(300, token);
+            await ReloadTable();
+        }
+        catch (OperationCanceledException)
+        {
+            // ignore
+        }
+    }
+
+    private async Task ShowDetails(Account account)
+    {
+        var parameters = new DialogParameters
+        {
+            ["AccountId"] = account.Id
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = DialogService.Show<TelegramPanel.Web.Components.Dialogs.AccountDetailsDialog>("账号详情", parameters, options)!;
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+            await ReloadTable();
+    }
+
+    private Task OpenAccountChannels(Account account)
+    {
+        var parameters = new DialogParameters
+        {
+            ["AccountId"] = account.Id
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Large, FullWidth = true };
+        DialogService.Show<TelegramPanel.Web.Components.Dialogs.AccountChannelMembershipsDialog>("加入的频道", parameters, options);
+        return Task.CompletedTask;
+    }
+
+    private Task OpenAccountGroups(Account account)
+    {
+        var parameters = new DialogParameters
+        {
+            ["AccountId"] = account.Id
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Large, FullWidth = true };
+        DialogService.Show<TelegramPanel.Web.Components.Dialogs.AccountGroupMembershipsDialog>("加入的群组", parameters, options);
+        return Task.CompletedTask;
+    }
+
+    private async Task OpenChangeTwoFactorPassword(Account account)
+    {
+        if (loading)
+            return;
+
+        var parameters = new DialogParameters
+        {
+            ["AccountIds"] = new List<int> { account.Id }
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        DialogService.Show<TelegramPanel.Web.Components.Dialogs.ChangeTwoFactorPasswordDialog>("修改二级密码", parameters, options);
+        await Task.CompletedTask;
+    }
+
+    private async Task OpenChangeTwoFactorRecoveryEmail(Account account)
+    {
+        if (loading)
+            return;
+
+        var parameters = new DialogParameters
+        {
+            ["AccountId"] = account.Id
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        DialogService.Show<TelegramPanel.Web.Components.Dialogs.ChangeTwoFactorRecoveryEmailDialog>("绑定/换绑找回邮箱", parameters, options);
+        await Task.CompletedTask;
+    }
+
+    private async Task OpenChangeLoginEmail(Account account)
+    {
+        if (loading)
+            return;
+
+        var parameters = new DialogParameters
+        {
+            ["AccountId"] = account.Id
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        DialogService.Show<TelegramPanel.Web.Components.Dialogs.ChangeLoginEmailDialog>("绑定/换绑登录邮箱", parameters, options);
+        await Task.CompletedTask;
+    }
+
+    private async Task OpenEditUserProfile(Account account)
+    {
+        if (loading)
+            return;
+
+        var parameters = new DialogParameters
+        {
+            ["AccountId"] = account.Id
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = DialogService.Show<TelegramPanel.Web.Components.Dialogs.EditUserProfileDialog>("编辑用户资料", parameters, options)!;
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+            await ReloadTable();
+    }
+
+    private async Task OpenBatchChangeTwoFactorPassword()
+    {
+        if (loading)
+            return;
+
+        var ids = selectedAccounts.Select(a => a.Id).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            Snackbar.Add("请先选择账号", Severity.Info);
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            ["AccountIds"] = ids
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        DialogService.Show<TelegramPanel.Web.Components.Dialogs.ChangeTwoFactorPasswordDialog>("批量修改二级密码", parameters, options);
+        await Task.CompletedTask;
+    }
+
+    private async Task OpenBatchChangeTwoFactorRecoveryEmail()
+    {
+        if (loading)
+            return;
+
+        var ids = selectedAccounts.Select(a => a.Id).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            Snackbar.Add("请先选择账号", Severity.Info);
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            ["AccountIds"] = ids
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        DialogService.Show<TelegramPanel.Web.Components.Dialogs.BatchChangeTwoFactorRecoveryEmailDialog>("批量换绑邮箱（找回+登录）", parameters, options);
+        await Task.CompletedTask;
+    }
+
+    private async Task OpenBatchSetAccountCategory()
+    {
+        if (loading)
+            return;
+
+        var targets = selectedAccounts.Select(a => a.Id).Distinct().ToList();
+        if (targets.Count == 0)
+        {
+            Snackbar.Add("请先选择账号", Severity.Info);
+            return;
+        }
+
+        if (categories.Count == 0)
+            await LoadCategories();
+
+        var parameters = new DialogParameters
+        {
+            ["Categories"] = categories,
+            ["SelectedCount"] = targets.Count
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = DialogService.Show<TelegramPanel.Web.Components.Dialogs.BatchSetAccountCategoryDialog>("批量修改分类", parameters, options)!;
+        var result = await dialog.Result;
+        if (result is not { Canceled: false })
+            return;
+
+        var categoryIdRaw = result.Data is int x ? x : 0;
+        int? categoryId = categoryIdRaw <= 0 ? null : categoryIdRaw;
+
+        loading = true;
+        try
+        {
+            foreach (var id in targets)
+            {
+                await AccountManagement.UpdateAccountCategoryAsync(id, categoryId);
+            }
+
+            selectedAccounts.Clear();
+            await ReloadTable();
+            Snackbar.Add($"分类已更新：{targets.Count} 个账号", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"修改分类失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task OpenBatchChangeNickname()
+    {
+        if (loading)
+            return;
+
+        var ids = selectedAccounts.Select(a => a.Id).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            Snackbar.Add("请先选择账号", Severity.Info);
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            ["AccountIds"] = ids
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = DialogService.Show<TelegramPanel.Web.Components.Dialogs.BatchChangeNicknameDialog>("批量修改昵称", parameters, options)!;
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+            await ReloadTable();
+    }
+
+    private async Task OpenBatchChangeAvatar()
+    {
+        if (loading)
+            return;
+
+        var ids = selectedAccounts.Select(a => a.Id).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            Snackbar.Add("请先选择账号", Severity.Info);
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            ["AccountIds"] = ids
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = DialogService.Show<TelegramPanel.Web.Components.Dialogs.BatchChangeAvatarDialog>("批量修改头像", parameters, options)!;
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+            await ReloadTable();
+    }
+
+    private async Task OpenBatchChangeUsername()
+    {
+        if (loading)
+            return;
+
+        var ids = selectedAccounts.Select(a => a.Id).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            Snackbar.Add("请先选择账号", Severity.Info);
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            ["AccountIds"] = ids
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = DialogService.Show<TelegramPanel.Web.Components.Dialogs.BatchChangeUsernameDialog>("批量修改用户名", parameters, options)!;
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+            await ReloadTable();
+    }
+
+    private async Task OpenBatchChangeBio()
+    {
+        if (loading)
+            return;
+
+        var ids = selectedAccounts.Select(a => a.Id).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            Snackbar.Add("请先选择账号", Severity.Info);
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            ["AccountIds"] = ids
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = DialogService.Show<TelegramPanel.Web.Components.Dialogs.BatchChangeBioDialog>("批量修改 Bio", parameters, options)!;
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+            await ReloadTable();
+    }
+
+    private async Task OpenBatchJoinSubscribe()
+    {
+        if (loading)
+            return;
+
+        var ids = selectedAccounts.Select(a => a.Id).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            Snackbar.Add("请先选择账号", Severity.Info);
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            ["AccountIds"] = ids,
+            ["Operation"] = "join"
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        DialogService.Show<TelegramPanel.Web.Components.Dialogs.BatchChatMembershipDialog>("批量加群/订阅/启用Bot", parameters, options);
+        await Task.CompletedTask;
+    }
+
+    private async Task OpenBatchLeaveUnsubscribe()
+    {
+        if (loading)
+            return;
+
+        var ids = selectedAccounts.Select(a => a.Id).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            Snackbar.Add("请先选择账号", Severity.Info);
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            ["AccountIds"] = ids,
+            ["Operation"] = "leave"
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        DialogService.Show<TelegramPanel.Web.Components.Dialogs.BatchChatMembershipDialog>("批量退群/退订/停用Bot", parameters, options);
+        await Task.CompletedTask;
+    }
+
+    private async Task OpenJoinSubscribe(Account account)
+    {
+        if (loading)
+            return;
+
+        var parameters = new DialogParameters
+        {
+            ["AccountIds"] = new List<int> { account.Id },
+            ["Operation"] = "join"
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        DialogService.Show<TelegramPanel.Web.Components.Dialogs.BatchChatMembershipDialog>("加群/订阅", parameters, options);
+        await Task.CompletedTask;
+    }
+
+    private async Task OpenLeaveUnsubscribe(Account account)
+    {
+        if (loading)
+            return;
+
+        var parameters = new DialogParameters
+        {
+            ["AccountIds"] = new List<int> { account.Id },
+            ["Operation"] = "leave"
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        DialogService.Show<TelegramPanel.Web.Components.Dialogs.BatchChatMembershipDialog>("退群/退订", parameters, options);
+        await Task.CompletedTask;
+    }
+
+    private string BuildTelegramStatusTitle(TelegramAccountStatusResult s)
+    {
+        var details = string.IsNullOrWhiteSpace(s.Details) ? s.Summary : s.Details;
+        var checkedAt = TimeZone.Format(s.CheckedAtUtc, "yyyy-MM-dd HH:mm");
+        return $"{details}（检测时间：{checkedAt}）";
+    }
+
+    private async Task RefreshTelegramStatus(Account account)
+    {
+        try
+        {
+            loading = true;
+            bool? probeResult = await DialogService.ShowMessageBox(
+                "刷新 Telegram 状态",
+                "是否进行深度探测（将创建并删除一个测试频道，用于判断【创建频道接口是否被冻结】）？",
+                yesText: "深度探测",
+                cancelText: "普通刷新");
+
+            var probe = probeResult == true;
+
+            // 风控检查：深度探测是敏感操作
+            if (probe)
+            {
+                var riskCheck = RiskService.CheckLoginDuration(account);
+                if (riskCheck.IsRisky)
+                {
+                    var parameters = new DialogParameters
+                    {
+                        ["Message"] = riskCheck.Message,
+                        ["DetailedMessage"] = riskCheck.DetailedMessage,
+                        ["ShowRecommendations"] = true
+                    };
+                    var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium };
+                    var dialog = DialogService.Show<RiskWarningDialog>("风控警告", parameters, options);
+                    var dialogResult = await dialog.Result;
+                    if (dialogResult.Canceled)
+                    {
+                        loading = false;
+                        return; // 用户取消操作
+                    }
+                }
+            }
+
+            var result = await AccountTelegramTools.RefreshAccountStatusAsync(account.Id, probeCreateChannel: probe, cancellationToken: _pageCts.Token);
+            telegramStatus[account.Id] = result;
+
+            // 资料刷新后重新加载（昵称/用户名/用户ID 可能更新）
+            await ReloadTable();
+
+            Snackbar.Add($"账号 {account.DisplayPhone} 状态：{result.Summary}", result.Ok ? Severity.Success : Severity.Warning);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"刷新失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task BatchRefreshTelegramStatus()
+    {
+        var targets = selectedAccounts
+            .Where(a => a.Id > 0)
+            .GroupBy(a => a.Id)
+            .Select(g => g.First())
+            .ToList();
+
+        if (targets.Count == 0)
+        {
+            Snackbar.Add("请先选择账号", Severity.Warning);
+            return;
+        }
+
+        loading = true;
+        try
+        {
+            bool? probeResult = await DialogService.ShowMessageBox(
+                "刷新已选 Telegram 状态",
+                $"将刷新已选 {targets.Count} 个账号的 Telegram 状态。\n\n是否进行深度探测（将对每个账号创建并删除一个测试频道，用于判断【创建频道接口是否被冻结】）？",
+                yesText: "深度探测",
+                cancelText: "普通刷新");
+
+            var probe = probeResult == true;
+
+            // 批量风控检查：深度探测是敏感操作
+            if (probe && targets.Count > 0)
+            {
+                var batchCheck = RiskService.CheckBatchAccounts(targets);
+                if (batchCheck.HasRiskyAccounts)
+                {
+                    var parameters = new DialogParameters
+                    {
+                        ["Message"] = $"检测到 {batchCheck.RiskyCount} 个风险账号",
+                        ["DetailedMessage"] = batchCheck.GetRiskySummary(),
+                        ["ShowRecommendations"] = true,
+                        ["ShowExcludeOption"] = true,
+                        ["RiskyAccounts"] = batchCheck.RiskyAccounts.ToList()
+                    };
+                    var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Large };
+                    var dialog = DialogService.Show<RiskWarningDialog>("批量操作风控警告", parameters, options);
+                    var dialogResult = await dialog.Result;
+
+                    if (dialogResult.Canceled)
+                    {
+                        loading = false;
+                        return; // 用户取消操作
+                    }
+
+                    if (dialogResult.Data is TelegramPanel.Core.Services.RiskWarningAction action
+                        && action == TelegramPanel.Core.Services.RiskWarningAction.ExcludeRisky)
+                    {
+                        // 排除风险账号后继续
+                        targets = batchCheck.SafeAccounts.ToList();
+                        if (targets.Count == 0)
+                        {
+                            Snackbar.Add("排除风险账号后无剩余账号", Severity.Info);
+                            loading = false;
+                            return;
+                        }
+                    }
+                    // else: 用户选择继续所有账号
+                }
+            }
+
+            foreach (var a in targets)
+            {
+                try
+                {
+                    var result = await AccountTelegramTools.RefreshAccountStatusAsync(a.Id, probeCreateChannel: probe, cancellationToken: _pageCts.Token);
+                    telegramStatus[a.Id] = result;
+                }
+                catch (Exception ex)
+                {
+                    telegramStatus[a.Id] = new TelegramAccountStatusResult(
+                        Ok: false,
+                        Summary: "刷新失败",
+                        Details: ex.Message,
+                        CheckedAtUtc: DateTime.UtcNow);
+                }
+
+                StateHasChanged();
+            }
+
+            await ReloadTable();
+            Snackbar.Add($"批量刷新完成：{targets.Count} 个账号", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"批量刷新失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        try
+        {
+            _pageCts.Cancel();
+        }
+        catch
+        {
+            // ignore
+        }
+        finally
+        {
+            _pageCts.Dispose();
+        }
+    }
+
+    private Task SelectAllFiltered()
+    {
+        selectedAccounts = accounts.ToHashSet();
+        return Task.CompletedTask;
+    }
+
+    private Task InvertSelection()
+    {
+        var targets = accounts.ToList();
+        foreach (var a in targets)
+        {
+            if (selectedAccounts.Contains(a))
+                selectedAccounts.Remove(a);
+            else
+                selectedAccounts.Add(a);
+        }
+        return Task.CompletedTask;
+    }
+
+    private Task ClearSelection()
+    {
+        selectedAccounts.Clear();
+        return Task.CompletedTask;
+    }
+
+    private SelectionToggleMode _selectionToggleMode = SelectionToggleMode.SelectAll;
+    private string SelectionToggleText => _selectionToggleMode switch
+    {
+        SelectionToggleMode.SelectAll => "全选本页",
+        SelectionToggleMode.Invert => "反选本页",
+        SelectionToggleMode.Clear => "清空选择",
+        _ => "全选本页"
+    };
+
+    private string SelectionToggleIcon => _selectionToggleMode switch
+    {
+        SelectionToggleMode.SelectAll => Icons.Material.Filled.SelectAll,
+        SelectionToggleMode.Invert => Icons.Material.Filled.Flip,
+        SelectionToggleMode.Clear => Icons.Material.Filled.Clear,
+        _ => Icons.Material.Filled.SelectAll
+    };
+
+    private async Task CycleSelectionToggle()
+    {
+        switch (_selectionToggleMode)
+        {
+            case SelectionToggleMode.SelectAll:
+                await SelectAllFiltered();
+                _selectionToggleMode = SelectionToggleMode.Invert;
+                break;
+            case SelectionToggleMode.Invert:
+                await InvertSelection();
+                _selectionToggleMode = SelectionToggleMode.Clear;
+                break;
+            case SelectionToggleMode.Clear:
+                await ClearSelection();
+                _selectionToggleMode = SelectionToggleMode.SelectAll;
+                break;
+            default:
+                _selectionToggleMode = SelectionToggleMode.SelectAll;
+                break;
+        }
+    }
+
+    private enum SelectionToggleMode
+    {
+        SelectAll = 0,
+        Invert = 1,
+        Clear = 2
+    }
+
+    private async Task DeleteSelectedAccounts()
+    {
+        var targets = selectedAccounts.ToList();
+        if (targets.Count == 0)
+        {
+            Snackbar.Add("未选择任何账号", Severity.Info);
+            return;
+        }
+
+        bool? result = await DialogService.ShowMessageBox(
+            "确认删除",
+            $"确定要删除已选账号（{targets.Count} 个）吗？将同时清理 sessions 文件，且不可恢复。若部分账号删除失败，将继续删除剩余账号并汇总失败原因。",
+            yesText: "删除", cancelText: "取消");
+
+        if (result != true)
+            return;
+
+        loading = true;
+        try
+        {
+            var success = 0;
+            var failures = new List<string>();
+            foreach (var a in targets)
+            {
+                try
+                {
+                    await AccountManagement.DeleteAccountAsync(a.Id);
+                    success++;
+                }
+                catch (Exception ex)
+                {
+                    failures.Add($"{a.Phone}：{ex.Message}");
+                }
+            }
+
+            selectedAccounts.Clear();
+            await ReloadTable();
+
+            if (failures.Count == 0)
+            {
+                Snackbar.Add($"删除完成：成功 {success}/{targets.Count}", Severity.Success);
+                return;
+            }
+
+            Snackbar.Add($"删除完成：成功 {success}/{targets.Count}，失败 {failures.Count}", Severity.Warning);
+
+            // 避免 Snackbar 过长，失败原因集中弹窗展示
+            var details = string.Join(Environment.NewLine, failures.Take(50));
+            if (failures.Count > 50)
+                details += Environment.NewLine + $"... 仅展示前 50 条（共 {failures.Count} 条）";
+
+            await DialogService.ShowMessageBox(
+                "删除失败明细",
+                details,
+                yesText: "知道了");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"删除失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task ExportSelectedAccountsAsync()
+    {
+        var ids = selectedAccounts.Select(a => a.Id).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            Snackbar.Add("请先勾选要导出的账号", Severity.Info);
+            return;
+        }
+
+        await ExportAccountsByIdsAsync(ids, "已选账号");
+    }
+
+    private async Task ExportCurrentPageAccountsAsync()
+    {
+        var ids = accounts.Select(a => a.Id).Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            Snackbar.Add("当前页没有账号可导出", Severity.Info);
+            return;
+        }
+
+        await ExportAccountsByIdsAsync(ids, "当前页账号");
+    }
+
+    private async Task ExportAccountsByIdsAsync(IReadOnlyList<int> ids, string scopeLabel)
+    {
+        var format = await SelectExportFormatAsync(ids.Count, scopeLabel);
+        if (string.IsNullOrWhiteSpace(format))
+            return;
+
+        var qs = string.Join(",", ids);
+        var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        Navigation.NavigateTo($"/downloads/accounts.zip?ids={qs}&format={format}&ts={ts}", forceLoad: true);
+    }
+
+    private async Task<string?> SelectExportFormatAsync(int accountCount, string scopeLabel)
+    {
+        var parameters = new DialogParameters
+        {
+            ["AccountCount"] = accountCount,
+            ["ScopeLabel"] = scopeLabel
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = DialogService.Show<TelegramPanel.Web.Components.Dialogs.ExportAccountFormatDialog>("选择导出格式", parameters, options)!;
+        var result = await dialog.Result;
+        if (result is not { Canceled: false } || result.Data is not string formatRaw)
+            return null;
+
+        return string.Equals(formatRaw, "tdata", StringComparison.OrdinalIgnoreCase)
+            ? "tdata"
+            : "telethon";
+    }
+
+    private async Task OpenSystemInbox(Account account)
+    {
+        var parameters = new DialogParameters
+        {
+            ["AccountId"] = account.Id,
+            ["Phone"] = account.DisplayPhone
+        };
+
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        DialogService.Show<TelegramPanel.Web.Components.Dialogs.SystemInboxDialog>("系统通知（验证码）", parameters, options);
+        await Task.CompletedTask;
+    }
+
+    private async Task OpenDevices(Account account)
+    {
+        var parameters = new DialogParameters
+        {
+            ["AccountId"] = account.Id,
+            ["Phone"] = account.DisplayPhone
+        };
+
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Large, FullWidth = true };
+        DialogService.Show<TelegramPanel.Web.Components.Dialogs.OnlineDevicesDialog>("在线设备", parameters, options);
+        await Task.CompletedTask;
+    }
+
+    private async Task ToggleActive(Account account)
+    {
+        try
+        {
+            var newIsActive = !account.IsActive;
+            await AccountManagement.SetAccountActiveStatusAsync(account.Id, newIsActive);
+
+            // 注意：Account 实体可能被同一个 DbContext 跟踪，SetAccountActiveStatusAsync 内部已更新该实例。
+            // 这里用 newIsActive 赋值/提示，避免出现“又反转一次”的提示错误。
+            account.IsActive = newIsActive;
+            Snackbar.Add($"账号已{(newIsActive ? "启用" : "停用")}", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"操作失败：{ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteAccount(Account account)
+    {
+        bool? result = await DialogService.ShowMessageBox(
+            "确认删除",
+            $"确定要删除账号 {account.DisplayPhone} 吗？此操作不可撤销！",
+            yesText: "删除", cancelText: "取消");
+
+        if (result == true)
+        {
+            try
+            {
+                await AccountManagement.DeleteAccountAsync(account.Id);
+                await ReloadTable();
+                Snackbar.Add("账号已删除", Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"删除失败：{ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private async Task CleanupSelectedWasteAccounts()
+    {
+        var targets = selectedAccounts
+            .Where(a => a.Id > 0)
+            .GroupBy(a => a.Id)
+            .Select(g => g.First())
+            .ToList();
+
+        if (targets.Count == 0)
+        {
+            Snackbar.Add("请先选择账号", Severity.Warning);
+            return;
+        }
+
+        loading = true;
+        try
+        {
+            bool? probeResult = await DialogService.ShowMessageBox(
+                "清理已选废号",
+                $"将对已选 {targets.Count} 个账号执行 Telegram 状态检测，并删除判定为废号的账号与 session 文件。\n\n是否进行深度探测（将对每个账号创建并删除一个测试频道，用于判断【创建频道接口是否被冻结】）？",
+                yesText: "深度检测并清理",
+                cancelText: "普通检测并清理");
+
+            var probe = probeResult == true;
+
+            // 批量风控检查：深度探测是敏感操作
+            if (probe && targets.Count > 0)
+            {
+                var batchCheck = RiskService.CheckBatchAccounts(targets);
+                if (batchCheck.HasRiskyAccounts)
+                {
+                    var parameters = new DialogParameters
+                    {
+                        ["Message"] = $"检测到 {batchCheck.RiskyCount} 个风险账号",
+                        ["DetailedMessage"] = batchCheck.GetRiskySummary(),
+                        ["ShowRecommendations"] = true,
+                        ["ShowExcludeOption"] = true,
+                        ["RiskyAccounts"] = batchCheck.RiskyAccounts.ToList()
+                    };
+                    var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Large };
+                    var dialog = DialogService.Show<RiskWarningDialog>("批量操作风控警告", parameters, options);
+                    var dialogResult = await dialog.Result;
+
+                    if (dialogResult.Canceled)
+                    {
+                        loading = false;
+                        return;
+                    }
+
+                    if (dialogResult.Data is TelegramPanel.Core.Services.RiskWarningAction action
+                        && action == TelegramPanel.Core.Services.RiskWarningAction.ExcludeRisky)
+                    {
+                        targets = batchCheck.SafeAccounts.ToList();
+                        if (targets.Count == 0)
+                        {
+                            Snackbar.Add("排除风险账号后无剩余账号", Severity.Info);
+                            loading = false;
+                            return;
+                        }
+                    }
+                }
+            }
+
+            var deleted = 0;
+            var skipped = 0;
+            var failures = new List<string>();
+
+            foreach (var a in targets)
+            {
+                try
+                {
+                    var status = await AccountTelegramTools.RefreshAccountStatusAsync(
+                        a.Id,
+                        probeCreateChannel: probe,
+                        cancellationToken: _pageCts.Token);
+                    telegramStatus[a.Id] = status;
+
+                    if (!TelegramAccountWasteJudge.TryGetWasteReason(status, out var reason))
+                    {
+                        skipped++;
+                        continue;
+                    }
+
+                    await AccountManagement.PurgeAccountAsync(a.Id, _pageCts.Token);
+                    deleted++;
+                }
+                catch (Exception ex)
+                {
+                    failures.Add($"{a.DisplayPhone}：{ex.Message}");
+                }
+
+                StateHasChanged();
+            }
+
+            selectedAccounts.Clear();
+            await ReloadTable();
+
+            var summary = $"清理完成：删除 {deleted}，跳过 {skipped}，失败 {failures.Count}（共 {targets.Count}）";
+            Snackbar.Add(summary, failures.Count == 0 ? Severity.Success : Severity.Warning);
+
+            if (failures.Count > 0)
+            {
+                var details = string.Join(Environment.NewLine, failures.Take(80));
+                if (failures.Count > 80)
+                    details += Environment.NewLine + $"... 仅展示前 80 条（共 {failures.Count} 条）";
+
+                await DialogService.ShowMessageBox("失败明细（前 80 条）", details, "关闭");
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"批量清理失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task CleanupFilteredWasteAccounts()
+    {
+        if (loading)
+            return;
+
+        var categoryId = filterCategoryId <= 0 ? (int?)null : filterCategoryId;
+        var targets = (await AccountManagement.QueryAccountsAsync(
+                categoryId: categoryId,
+                search: searchString,
+                onlyWaste: true,
+                cancellationToken: _pageCts.Token))
+            .Where(a => a.Id > 0)
+            .GroupBy(a => a.Id)
+            .Select(g => g.First())
+            .ToList();
+
+        if (targets.Count == 0)
+        {
+            Snackbar.Add("当前筛选条件下没有可清理的废号（需要先执行一次状态检测）", Severity.Info);
+            return;
+        }
+
+        loading = true;
+        try
+        {
+            bool? probeResult = await DialogService.ShowMessageBox(
+                "清理筛选废号",
+                $"将对筛选结果 {targets.Count} 个账号执行 Telegram 状态检测，并删除判定为废号的账号与 session 文件。\n\n是否进行深度探测（将对每个账号创建并删除一个测试频道，用于判断【创建频道接口是否被冻结】）？",
+                yesText: "深度检测并清理",
+                cancelText: "普通检测并清理");
+
+            var probe = probeResult == true;
+
+            // 批量风控检查：深度探测是敏感操作
+            if (probe && targets.Count > 0)
+            {
+                var batchCheck = RiskService.CheckBatchAccounts(targets);
+                if (batchCheck.HasRiskyAccounts)
+                {
+                    var parameters = new DialogParameters
+                    {
+                        ["Message"] = $"检测到 {batchCheck.RiskyCount} 个风险账号",
+                        ["DetailedMessage"] = batchCheck.GetRiskySummary(),
+                        ["ShowRecommendations"] = true,
+                        ["ShowExcludeOption"] = true,
+                        ["RiskyAccounts"] = batchCheck.RiskyAccounts.ToList()
+                    };
+                    var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Large };
+                    var dialog = DialogService.Show<RiskWarningDialog>("批量操作风控警告", parameters, options);
+                    var dialogResult = await dialog.Result;
+
+                    if (dialogResult.Canceled)
+                    {
+                        loading = false;
+                        return;
+                    }
+
+                    if (dialogResult.Data is TelegramPanel.Core.Services.RiskWarningAction action
+                        && action == TelegramPanel.Core.Services.RiskWarningAction.ExcludeRisky)
+                    {
+                        targets = batchCheck.SafeAccounts.ToList();
+                        if (targets.Count == 0)
+                        {
+                            Snackbar.Add("排除风险账号后无剩余账号", Severity.Info);
+                            loading = false;
+                            return;
+                        }
+                    }
+                }
+            }
+
+            var deleted = 0;
+            var skipped = 0;
+            var failures = new List<string>();
+
+            foreach (var a in targets)
+            {
+                try
+                {
+                    var status = await AccountTelegramTools.RefreshAccountStatusAsync(
+                        a.Id,
+                        probeCreateChannel: probe,
+                        cancellationToken: _pageCts.Token);
+                    telegramStatus[a.Id] = status;
+
+                    if (!TelegramAccountWasteJudge.TryGetWasteReason(status, out _))
+                    {
+                        skipped++;
+                        continue;
+                    }
+
+                    await AccountManagement.PurgeAccountAsync(a.Id, _pageCts.Token);
+                    deleted++;
+                }
+                catch (Exception ex)
+                {
+                    failures.Add($"{a.DisplayPhone}：{ex.Message}");
+                }
+
+                StateHasChanged();
+            }
+
+            selectedAccounts.Clear();
+            await ReloadTable();
+
+            var summary = $"清理完成：删除 {deleted}，跳过 {skipped}，失败 {failures.Count}（共 {targets.Count}）";
+            Snackbar.Add(summary, failures.Count == 0 ? Severity.Success : Severity.Warning);
+
+            if (failures.Count > 0)
+            {
+                var details = string.Join(Environment.NewLine, failures.Take(80));
+                if (failures.Count > 80)
+                    details += Environment.NewLine + $"... 仅展示前 80 条（共 {failures.Count} 条）";
+
+                await DialogService.ShowMessageBox("失败明细（前 80 条）", details, "关闭");
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"批量清理失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task CleanupAllWasteAccounts()
+    {
+        if (loading)
+            return;
+
+        loading = true;
+        try
+        {
+            // 先拿一次总数，用于确认提示（不受页面筛选影响：清理全系统）
+            var (_, total) = await AccountManagement.QueryAccountsPagedAsync(
+                categoryId: null,
+                search: null,
+                onlyWaste: false,
+                pageIndex: 0,
+                pageSize: 1,
+                cancellationToken: _pageCts.Token);
+
+            bool? probeResult = await DialogService.ShowMessageBox(
+                "清理所有废号",
+                $"将扫描系统全部账号（共 {total} 个），执行 Telegram 状态检测，并删除判定为废号的账号与 session 文件。\n\n是否进行深度探测（将对每个账号创建并删除一个测试频道，用于判断【创建频道接口是否被冻结】）？",
+                yesText: "深度检测并清理",
+                cancelText: "普通检测并清理");
+
+            var probe = probeResult == true;
+
+            // 全量深度探测风险很高，额外要求确认
+            if (probe)
+            {
+                bool? ok = await DialogService.ShowMessageBox(
+                    "二次确认（高风险）",
+                    "你选择了【深度探测】并且范围是【全部账号】。\n这会对每个账号创建并删除测试频道，属于高频敏感操作，极易触发风控。\n\n确定继续吗？",
+                    yesText: "继续",
+                    cancelText: "取消");
+
+                if (ok != true)
+                    return;
+            }
+
+            var targets = (await AccountManagement.QueryAccountsAsync(
+                    categoryId: null,
+                    search: null,
+                    cancellationToken: _pageCts.Token))
+                .Where(a => a.Id > 0)
+                .GroupBy(a => a.Id)
+                .Select(g => g.First())
+                .ToList();
+
+            if (targets.Count == 0)
+            {
+                Snackbar.Add("系统暂无账号可清理", Severity.Info);
+                return;
+            }
+
+            var deleted = 0;
+            var skipped = 0;
+            var failures = new List<string>();
+
+            foreach (var a in targets)
+            {
+                try
+                {
+                    var status = await AccountTelegramTools.RefreshAccountStatusAsync(
+                        a.Id,
+                        probeCreateChannel: probe,
+                        cancellationToken: _pageCts.Token);
+                    telegramStatus[a.Id] = status;
+
+                    if (!TelegramAccountWasteJudge.TryGetWasteReason(status, out _))
+                    {
+                        skipped++;
+                        continue;
+                    }
+
+                    await AccountManagement.PurgeAccountAsync(a.Id, _pageCts.Token);
+                    deleted++;
+                }
+                catch (Exception ex)
+                {
+                    failures.Add($"{a.DisplayPhone}：{ex.Message}");
+                }
+
+                StateHasChanged();
+            }
+
+            selectedAccounts.Clear();
+            await ReloadTable();
+
+            Snackbar.Add(
+                $"清理完成：删除 {deleted}，跳过 {skipped}，失败 {failures.Count}（共 {targets.Count}）",
+                failures.Count == 0 ? Severity.Success : Severity.Warning);
+
+            if (failures.Count > 0)
+            {
+                var details = string.Join(Environment.NewLine, failures.Take(80));
+                if (failures.Count > 80)
+                    details += Environment.NewLine + $"... 仅展示前 80 条（共 {failures.Count} 条）";
+
+                await DialogService.ShowMessageBox("失败明细（前 80 条）", details, "关闭");
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"清理失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task BatchKickAllOtherDevices()
+    {
+        if (loading)
+            return;
+
+        var targets = selectedAccounts.ToList();
+        if (targets.Count == 0)
+        {
+            Snackbar.Add("请先选择账号", Severity.Info);
+            return;
+        }
+
+        bool? result = await DialogService.ShowMessageBox(
+            "确认踢出",
+            $"将对 {targets.Count} 个账号执行【踢出所有其他设备】（会保留面板当前会话）。是否继续？",
+            yesText: "继续", cancelText: "取消");
+
+        if (result != true)
+            return;
+
+        loading = true;
+        try
+        {
+            var success = 0;
+            var failures = new List<string>();
+
+            foreach (var a in targets)
+            {
+                try
+                {
+                    var ok = await AccountTelegramTools.KickAllOtherAuthorizationsAsync(a.Id);
+                    if (ok) success++;
+                    else failures.Add($"{a.DisplayPhone}：返回 false");
+                }
+                catch (Exception ex)
+                {
+                    failures.Add($"{a.DisplayPhone}：{ex.Message}");
+                }
+            }
+
+            selectedAccounts.Clear();
+
+            if (failures.Count == 0)
+            {
+                Snackbar.Add($"踢出完成：成功 {success}/{targets.Count}", Severity.Success);
+                return;
+            }
+
+            Snackbar.Add($"踢出完成：成功 {success}/{targets.Count}，失败 {failures.Count}", Severity.Warning);
+
+            var details = string.Join(Environment.NewLine, failures.Take(80));
+            if (failures.Count > 80)
+                details += Environment.NewLine + $"... 仅展示前 80 条（共 {failures.Count} 条）";
+
+            await DialogService.ShowMessageBox("失败明细（前 80 条）", details, "关闭");
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+}

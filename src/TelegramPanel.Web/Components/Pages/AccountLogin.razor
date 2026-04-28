@@ -1,0 +1,436 @@
+@page "/accounts/login"
+@inject IAccountService AccountService
+@inject AccountManagementService AccountManagement
+@inject IConfiguration Configuration
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@using TelegramPanel.Data.Entities
+
+<PageTitle>手机号登录 - Telegram Panel</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">手机号登录</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="6" Class="mx-auto">
+        <MudCard>
+            <MudCardContent>
+                <MudStack Spacing="2">
+                    <MudText Typo="Typo.subtitle2">@StepTitle</MudText>
+                    <MudDivider />
+
+                    @if (currentStep == LoginStep.Phone)
+                    {
+                        @if (!IsApiConfigured)
+                        {
+                            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true" Class="mb-2">
+                                未配置全局 Telegram API（ApiId/ApiHash），无法登录。
+                            </MudAlert>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="/settings">
+                                去系统设置配置
+                            </MudButton>
+                        }
+                        else
+                        {
+                            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true" Class="mb-2">
+                                使用全局 Telegram API：ApiId=@(Configuration["Telegram:ApiId"] ?? "（未配置）")
+                            </MudAlert>
+                        }
+
+                        <MudTextField @bind-Value="phoneNumber" Label="手机号" Variant="Variant.Outlined" Required="true"
+                                      Placeholder="+86xxxxxxxxxx" Class="mt-2" />
+                        <MudText Typo="Typo.caption" Class="mt-1" Color="Color.Info">
+                            * 手机号需包含国家代码，例如：+8613800138000
+                        </MudText>
+                    }
+                    else if (currentStep == LoginStep.Code)
+                    {
+                        <MudText Typo="Typo.body1">
+                            验证码已发送到 <strong>@phoneNumber</strong>
+                        </MudText>
+                        <MudTextField @bind-Value="verificationCode" Label="验证码" Variant="Variant.Outlined" Required="true"
+                                      Placeholder="12345" Class="mt-2" />
+                        <MudText Typo="Typo.caption" Class="mt-1" Color="Color.Info">
+                            说明：验证码通常优先发送到已登录设备的 Telegram「系统通知（777000）」；没有可用设备时才可能发送短信/电话。
+                        </MudText>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Class="mt-2"
+                                   Disabled="@(logging || accountId == 0)" OnClick="@(async (MouseEventArgs _) => await ResendCodeAsync())">
+                            重新发送验证码（尝试切换通道）
+                        </MudButton>
+                    }
+                    else if (currentStep == LoginStep.Password)
+                    {
+                        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
+                            此账号启用了两步验证，请输入密码
+                        </MudAlert>
+                        <MudTextField @bind-Value="password" Label="两步验证密码" Variant="Variant.Outlined"
+                                      InputType="InputType.Password" Required="true" Class="mt-2" />
+                    }
+                    else if (currentStep == LoginStep.Done)
+                    {
+                        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Dense="true">
+                            登录成功并保存到数据库！
+                        </MudAlert>
+                        <MudText Typo="Typo.body2" Class="mt-2"><strong>手机号：</strong>@phoneNumber</MudText>
+                        <MudText Typo="Typo.body2"><strong>用户名：</strong>@(username ?? "无")</MudText>
+                        <MudText Typo="Typo.body2"><strong>用户ID：</strong>@userId</MudText>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/accounts" Class="mt-3">
+                            查看账号列表
+                        </MudButton>
+                    }
+                </MudStack>
+            </MudCardContent>
+            <MudCardActions>
+                <MudButton Variant="Variant.Text" Color="Color.Primary" Disabled="@logging"
+                           OnClick="@(async (MouseEventArgs _) => await ResetAsync())">
+                    重置
+                </MudButton>
+                <MudSpacer />
+                @if (currentStep != LoginStep.Phone && currentStep != LoginStep.Done)
+                {
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" Disabled="@logging"
+                               OnClick="@(async (MouseEventArgs _) => await PreviousAsync())">
+                        上一步
+                    </MudButton>
+                }
+                @if (currentStep != LoginStep.Done)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                               Disabled="@logging"
+                               OnClick="@(async (MouseEventArgs _) => await NextAsync())">
+                        @if (logging)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            <span>处理中...</span>
+                        }
+                        else
+                        {
+                            <span>@PrimaryButtonText</span>
+                        }
+                    </MudButton>
+                }
+            </MudCardActions>
+        </MudCard>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private bool logging = false;
+
+    private int telegramApiId;
+    private string telegramApiHash = "";
+    private string sessionsPath = "sessions";
+    private string phoneNumber = "";
+    private string verificationCode = "";
+    private string password = "";
+
+    private string? username = "";
+    private long userId = 0;
+    private int accountId = 0;
+    private LoginStep currentStep = LoginStep.Phone;
+
+    private bool TryGetTelegramApi(out int apiId, out string apiHash, out string configuredSessionsPath)
+    {
+        apiHash = Configuration["Telegram:ApiHash"] ?? "";
+        configuredSessionsPath = Configuration["Telegram:SessionsPath"] ?? "sessions";
+        return int.TryParse(Configuration["Telegram:ApiId"], out apiId)
+               && apiId > 0
+               && !string.IsNullOrWhiteSpace(apiHash);
+    }
+
+    private bool IsApiConfigured => TryGetTelegramApi(out _, out _, out _);
+
+    private string StepTitle => currentStep switch
+    {
+        LoginStep.Phone => "步骤 1/3：输入手机号并发送验证码",
+        LoginStep.Code => "步骤 2/3：输入验证码",
+        LoginStep.Password => "步骤 3/3：输入两步验证密码",
+        LoginStep.Done => "完成",
+        _ => "手机号登录"
+    };
+
+    private string PrimaryButtonText => currentStep switch
+    {
+        LoginStep.Phone => "发送验证码",
+        LoginStep.Code => "验证验证码",
+        LoginStep.Password => "验证密码",
+        _ => "下一步"
+    };
+
+    private async Task ResetAsync()
+    {
+        if (accountId != 0)
+        {
+            try
+            {
+                await AccountService.ReleaseClientAsync(accountId);
+            }
+            catch
+            {
+                // 忽略释放失败，避免影响 UI 重置
+            }
+        }
+
+        accountId = 0;
+        phoneNumber = "";
+        verificationCode = "";
+        password = "";
+        username = "";
+        userId = 0;
+        currentStep = LoginStep.Phone;
+    }
+
+    private Task PreviousAsync()
+    {
+        currentStep = currentStep switch
+        {
+            LoginStep.Code => LoginStep.Phone,
+            LoginStep.Password => LoginStep.Code,
+            _ => currentStep
+        };
+        return Task.CompletedTask;
+    }
+
+    private async Task NextAsync()
+    {
+        logging = true;
+        try
+        {
+            if (currentStep == LoginStep.Phone)
+            {
+                if (!TryGetTelegramApi(out telegramApiId, out telegramApiHash, out sessionsPath))
+                {
+                    Snackbar.Add("请先在【系统设置】中配置全局 Telegram API（ApiId/ApiHash）", Severity.Error);
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(phoneNumber))
+                {
+                    Snackbar.Add("请输入手机号（包含国家代码）", Severity.Error);
+                    return;
+                }
+
+                accountId = Random.Shared.Next(1, int.MaxValue);
+                var result = await AccountService.StartLoginAsync(accountId, phoneNumber);
+
+                if (result.Success)
+                {
+                    await SaveAccount(result.Account!);
+                    return;
+                }
+
+                if (result.NextStep == "code")
+                {
+                    Snackbar.Add($"验证码已发送到 {phoneNumber}", Severity.Info);
+                    currentStep = LoginStep.Code;
+                    return;
+                }
+
+                if (result.NextStep == "password")
+                {
+                    Snackbar.Add("需要两步验证密码", Severity.Info);
+                    currentStep = LoginStep.Password;
+                    return;
+                }
+
+                Snackbar.Add(result.Message ?? "发送验证码失败", Severity.Error);
+                if (accountId != 0)
+                {
+                    try { await AccountService.ReleaseClientAsync(accountId); } catch { }
+                    accountId = 0;
+                }
+                return;
+            }
+
+            if (currentStep == LoginStep.Code)
+            {
+                if (accountId == 0)
+                {
+                    Snackbar.Add("请先发送验证码", Severity.Warning);
+                    currentStep = LoginStep.Phone;
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(verificationCode))
+                {
+                    Snackbar.Add("请输入验证码", Severity.Error);
+                    return;
+                }
+
+                var result = await AccountService.SubmitCodeAsync(accountId, verificationCode);
+                if (result.Success)
+                {
+                    await SaveAccount(result.Account!);
+                    return;
+                }
+
+                if (result.NextStep == "password")
+                {
+                    Snackbar.Add("需要两步验证密码", Severity.Info);
+                    currentStep = LoginStep.Password;
+                    return;
+                }
+
+                Snackbar.Add(result.Message ?? "验证码错误或已过期", Severity.Error);
+                return;
+            }
+
+            if (currentStep == LoginStep.Password)
+            {
+                if (accountId == 0)
+                {
+                    Snackbar.Add("请先发送验证码", Severity.Warning);
+                    currentStep = LoginStep.Phone;
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(password))
+                {
+                    Snackbar.Add("请输入两步验证密码", Severity.Error);
+                    return;
+                }
+
+                var result = await AccountService.SubmitPasswordAsync(accountId, password);
+                if (result.Success)
+                {
+                    await SaveAccount(result.Account!);
+                    return;
+                }
+
+                Snackbar.Add(result.Message ?? "密码错误", Severity.Error);
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"操作失败：{ex.Message}", Severity.Error);
+            if (currentStep == LoginStep.Phone && accountId != 0)
+            {
+                try { await AccountService.ReleaseClientAsync(accountId); } catch { }
+                accountId = 0;
+            }
+        }
+        finally
+        {
+            logging = false;
+        }
+    }
+
+    private async Task ResendCodeAsync()
+    {
+        if (logging) return;
+        if (accountId == 0)
+        {
+            Snackbar.Add("请先在上一步发送验证码", Severity.Warning);
+            return;
+        }
+
+        logging = true;
+        try
+        {
+            var result = await AccountService.ResendCodeAsync(accountId);
+            Snackbar.Add(result.Message ?? "已请求重新发送验证码", result.Success ? Severity.Success : Severity.Info);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"重新发送失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            logging = false;
+        }
+    }
+
+    private enum LoginStep
+    {
+        Phone = 0,
+        Code = 1,
+        Password = 2,
+        Done = 3
+    }
+
+    private async Task SaveAccount(TelegramPanel.Core.Models.AccountInfo accountInfo)
+    {
+        try
+        {
+            var phoneDigits = TelegramPanel.Core.Utils.PhoneNumberFormatter.NormalizeToDigits(accountInfo.Phone);
+            if (string.IsNullOrWhiteSpace(phoneDigits))
+            {
+                Snackbar.Add("手机号无效，无法保存账号", Severity.Error);
+                return;
+            }
+
+            // 检查账号是否已存在
+            var existingAccount = await AccountManagement.GetAccountByPhoneAsync(phoneDigits);
+
+            if (existingAccount != null)
+            {
+                // 更新现有账号
+                existingAccount.Username = accountInfo.Username;
+                existingAccount.Nickname = BuildNickname(accountInfo);
+                existingAccount.IsActive = true;
+                existingAccount.ApiId = telegramApiId;
+                existingAccount.ApiHash = telegramApiHash;
+                existingAccount.LastSyncAt = DateTime.UtcNow;
+                existingAccount.LastLoginAt = DateTime.UtcNow;
+                await AccountManagement.UpdateAccountAsync(existingAccount);
+
+                Snackbar.Add("账号信息已更新", Severity.Success);
+            }
+            else
+            {
+                // 创建新账号
+                var account = new Account
+                {
+                    Phone = phoneDigits,
+                    UserId = accountInfo.TelegramUserId,
+                    Nickname = BuildNickname(accountInfo),
+                    Username = accountInfo.Username,
+                    SessionPath = System.IO.Path.Combine(sessionsPath, $"{phoneDigits}.session"),
+                    ApiId = telegramApiId,
+                    ApiHash = telegramApiHash,
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow,
+                    LastSyncAt = DateTime.UtcNow,
+                    LastLoginAt = DateTime.UtcNow
+                };
+
+                await AccountManagement.CreateAccountAsync(account);
+                Snackbar.Add("账号已保存到数据库", Severity.Success);
+            }
+
+            // 设置显示信息
+            username = accountInfo.Username;
+            userId = accountInfo.TelegramUserId;
+
+            // 跳转到完成步骤
+            currentStep = LoginStep.Done;
+
+            if (accountId != 0)
+            {
+                try
+                {
+                    await AccountService.ReleaseClientAsync(accountId);
+                }
+                catch
+                {
+                    // 忽略释放失败
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"保存账号失败：{ex.Message}", Severity.Error);
+        }
+    }
+
+    private static string? BuildNickname(TelegramPanel.Core.Models.AccountInfo accountInfo)
+    {
+        var first = accountInfo.FirstName?.Trim();
+        var last = accountInfo.LastName?.Trim();
+        var display = string.Join(" ", new[] { first, last }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        if (!string.IsNullOrWhiteSpace(display))
+            return display;
+
+        return string.IsNullOrWhiteSpace(accountInfo.Username) ? null : accountInfo.Username.Trim();
+    }
+}

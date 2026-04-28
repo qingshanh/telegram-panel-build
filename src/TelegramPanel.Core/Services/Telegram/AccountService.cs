@@ -1,0 +1,346 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
+using TelegramPanel.Core.Interfaces;
+using TelegramPanel.Core.Models;
+using TelegramPanel.Core.Utils;
+using AccountStatus = TelegramPanel.Core.Interfaces.AccountStatus;
+
+namespace TelegramPanel.Core.Services.Telegram;
+
+/// <summary>
+/// 账号服务实现
+/// </summary>
+public class AccountService : IAccountService
+{
+    private readonly ITelegramClientPool _clientPool;
+    private readonly ILogger<AccountService> _logger;
+    private readonly IConfiguration _configuration;
+
+    // 临时存储登录状态（实际项目应该使用数据库或缓存）
+    private readonly Dictionary<int, string> _pendingLogins = new();
+
+    public AccountService(ITelegramClientPool clientPool, ILogger<AccountService> logger, IConfiguration configuration)
+    {
+        _clientPool = clientPool;
+        _logger = logger;
+        _configuration = configuration;
+    }
+
+    public async Task<LoginResult> StartLoginAsync(int accountId, string phone)
+    {
+        if (!int.TryParse(_configuration["Telegram:ApiId"], out var apiId) || apiId <= 0)
+        {
+            return new LoginResult(false, null, "请先在【系统设置】中配置全局 Telegram API（ApiId/ApiHash）");
+        }
+
+        if (!TelegramApiConfigValidator.TryNormalizeApiHash(_configuration["Telegram:ApiHash"], out var apiHash, out var apiHashReason))
+        {
+            return new LoginResult(false, null, $"全局 Telegram API 配置无效：{apiHashReason}");
+        }
+
+        var sessionsPath = _configuration["Telegram:SessionsPath"] ?? "sessions";
+        Directory.CreateDirectory(sessionsPath);
+        var normalizedPhone = NormalizePhoneForLogin(phone);
+        var sessionPath = Path.Combine(sessionsPath, $"{normalizedPhone}.session");
+
+        // 若已有旧的 SQLite 格式 session（Telethon/Pyrogram/Telegram Desktop 常见），会导致 WTelegramClient 直接读取失败，
+        // 这里先自动备份，确保“手机号登录”能顺利重新生成 WTelegram 的 session。
+        TryBackupSqliteSessionIfExists(sessionPath);
+
+        _logger.LogInformation("Starting login for phone {Phone}", normalizedPhone);
+
+        WTelegram.Client? client = null;
+
+        try
+        {
+            client = await _clientPool.GetOrCreateClientAsync(
+                accountId,
+                apiId,
+                apiHash,
+                sessionPath,
+                sessionKey: apiHash,
+                phoneNumber: normalizedPhone,
+                userId: null);
+
+            string result;
+            try
+            {
+                result = await client.Login(normalizedPhone);
+            }
+            catch (Exception ex) when (LooksLikeSessionApiMismatchOrCorrupted(ex))
+            {
+                // session 与 ApiId/ApiHash 不匹配或损坏，备份后重新开始登录流程
+                TryBackupCorruptedSessionIfExists(sessionPath);
+                await _clientPool.RemoveClientAsync(accountId);
+
+                client = await _clientPool.GetOrCreateClientAsync(
+                    accountId,
+                    apiId,
+                    apiHash,
+                    sessionPath,
+                    sessionKey: apiHash,
+                    phoneNumber: normalizedPhone,
+                    userId: null);
+
+                result = await client.Login(normalizedPhone);
+            }
+
+            _logger.LogInformation("Login flow next step for {Phone}: {Step}", normalizedPhone, result);
+
+            var loginResult = result switch
+            {
+                "verification_code" => new LoginResult(false, "code", "请输入验证码"),
+                "password" => new LoginResult(false, "password", "请输入两步验证密码"),
+                "name" => new LoginResult(false, "signup", "需要注册新账号"),
+                "email" => new LoginResult(false, "email", "该账号需要邮箱验证（请按提示填写邮箱并完成验证）"),
+                "email_verification_code" => new LoginResult(false, "email_code", "请输入邮箱验证码"),
+                _ when client.User != null => new LoginResult(true, null, "登录成功", MapToAccountInfo(accountId, client)),
+                _ => new LoginResult(false, null, $"未知状态: {result}")
+            };
+
+            if (!loginResult.Success && string.IsNullOrWhiteSpace(loginResult.NextStep))
+            {
+                try { await _clientPool.RemoveClientAsync(accountId); } catch { }
+            }
+
+            return loginResult;
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                await _clientPool.RemoveClientAsync(accountId);
+            }
+            catch
+            {
+            }
+
+            var hint = BuildFriendlyStartLoginError(ex);
+            _logger.LogWarning(ex, "StartLogin failed for phone {Phone} (accountId={AccountId}): {Hint}", normalizedPhone, accountId, hint);
+            return new LoginResult(false, null, hint);
+        }
+    }
+
+    private static string BuildFriendlyStartLoginError(Exception ex)
+    {
+        var msg = ex.Message ?? string.Empty;
+
+        if (ex is FormatException
+            || msg.Contains("hex", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("hexadecimal", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("十六进制", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("16进制", StringComparison.OrdinalIgnoreCase))
+        {
+            return "发送验证码失败：检测到 ApiHash 格式异常。请到【系统设置】重新填写 Telegram ApiHash（my.telegram.org 获取的 32 位十六进制字符串）。";
+        }
+
+        if (ex is IOException
+            || msg.Contains("being used by another process", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("used by another process", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("process cannot access", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("被另一进程使用", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("被另一个进程使用", StringComparison.OrdinalIgnoreCase))
+        {
+            return "发送验证码失败：session 文件被占用。请稍后重试；若你部署了多个实例共享同一 sessions 目录，请改为单实例或为每个实例使用独立 sessions 目录。";
+        }
+
+        return $"发送验证码失败：{ex.GetType().Name}: {ex.Message}";
+    }
+
+    public async Task<LoginResult> ResendCodeAsync(int accountId)
+    {
+        var client = _clientPool.GetClient(accountId)
+            ?? throw new InvalidOperationException($"Client not found for account {accountId}");
+
+        // WTelegram 约定：verification_code 提交空字符串会触发“通过另一种方式重发验证码”（短信/电话等）
+        var result = await client.Login(string.Empty);
+        _logger.LogInformation("Resend code requested for temp account {AccountId}, next step: {Step}", accountId, result);
+
+        return result switch
+        {
+            "verification_code" => new LoginResult(false, "code", "已请求重新发送验证码"),
+            "password" => new LoginResult(false, "password", "需要两步验证密码"),
+            _ when client.User != null => new LoginResult(true, null, "登录成功", MapToAccountInfo(accountId, client)),
+            _ => new LoginResult(false, null, $"重新发送失败：{result}")
+        };
+    }
+
+    private static bool LooksLikeSessionApiMismatchOrCorrupted(Exception ex)
+    {
+        var msg = ex.Message ?? string.Empty;
+        return msg.Contains("Can't read session block", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("Use the correct api_hash", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("Use the correct api_hash/id/key", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void TryBackupSqliteSessionIfExists(string sessionPath)
+    {
+        try
+        {
+            var fullPath = Path.GetFullPath(sessionPath);
+            if (!File.Exists(fullPath))
+                return;
+
+            if (!LooksLikeSqliteSession(fullPath))
+                return;
+
+            var dir = Path.GetDirectoryName(fullPath) ?? Directory.GetCurrentDirectory();
+            var name = Path.GetFileNameWithoutExtension(fullPath);
+            var ext = Path.GetExtension(fullPath);
+            var backupPath = Path.Combine(dir, $"{name}.sqlite.bak{ext}");
+            File.Move(fullPath, backupPath, overwrite: true);
+            _logger.LogWarning("Detected SQLite session, backed up from {SessionPath} to {BackupPath}", fullPath, backupPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to backup sqlite session: {SessionPath}", sessionPath);
+        }
+    }
+
+    private void TryBackupCorruptedSessionIfExists(string sessionPath)
+    {
+        try
+        {
+            var fullPath = Path.GetFullPath(sessionPath);
+            if (!File.Exists(fullPath))
+                return;
+
+            var dir = Path.GetDirectoryName(fullPath) ?? Directory.GetCurrentDirectory();
+            var name = Path.GetFileNameWithoutExtension(fullPath);
+            var ext = Path.GetExtension(fullPath);
+            var backupPath = Path.Combine(dir, $"{name}.corrupt.bak{ext}");
+            File.Move(fullPath, backupPath, overwrite: true);
+            _logger.LogWarning("Detected corrupted/mismatched session, backed up from {SessionPath} to {BackupPath}", fullPath, backupPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to backup corrupted session: {SessionPath}", sessionPath);
+        }
+    }
+
+    private static bool LooksLikeSqliteSession(string filePath)
+    {
+        try
+        {
+            using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            Span<byte> header = stackalloc byte[16];
+            var read = fs.Read(header);
+            if (read < 15) return false;
+            var text = System.Text.Encoding.ASCII.GetString(header[..15]);
+            return string.Equals(text, "SQLite format 3", StringComparison.Ordinal);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public async Task<LoginResult> SubmitCodeAsync(int accountId, string code)
+    {
+        var client = _clientPool.GetClient(accountId)
+            ?? throw new InvalidOperationException($"Client not found for account {accountId}");
+
+        code = (code ?? string.Empty).Trim();
+        var result = await client.Login(code);
+
+        return result switch
+        {
+            "password" => new LoginResult(false, "password", "请输入两步验证密码"),
+            _ when client.User != null => new LoginResult(true, null, "登录成功", MapToAccountInfo(accountId, client)),
+            _ => new LoginResult(false, null, $"验证码错误或已过期: {result}")
+        };
+    }
+
+    public async Task<LoginResult> SubmitPasswordAsync(int accountId, string password)
+    {
+        var client = _clientPool.GetClient(accountId)
+            ?? throw new InvalidOperationException($"Client not found for account {accountId}");
+
+        var result = await client.Login(password);
+
+        return result switch
+        {
+            _ when client.User != null => new LoginResult(true, null, "登录成功", MapToAccountInfo(accountId, client)),
+            _ => new LoginResult(false, "password", "密码错误")
+        };
+    }
+
+    public Task<AccountInfo?> GetAccountInfoAsync(int accountId)
+    {
+        var client = _clientPool.GetClient(accountId);
+        if (client?.User == null) return Task.FromResult<AccountInfo?>(null);
+
+        return Task.FromResult<AccountInfo?>(MapToAccountInfo(accountId, client));
+    }
+
+    public async Task SyncAccountDataAsync(int accountId)
+    {
+        var client = _clientPool.GetClient(accountId)
+            ?? throw new InvalidOperationException($"Client not found for account {accountId}");
+
+        _logger.LogInformation("Syncing data for account {AccountId}", accountId);
+
+        // 获取所有对话
+        var dialogs = await client.Messages_GetAllDialogs();
+
+        _logger.LogInformation("Account {AccountId} has {Count} dialogs", accountId, dialogs.Dialogs.Length);
+
+        // TODO: 保存到数据库
+    }
+
+    public Task<AccountStatus> CheckStatusAsync(int accountId)
+    {
+        var client = _clientPool.GetClient(accountId);
+
+        if (client == null)
+            return Task.FromResult(AccountStatus.Offline);
+
+        if (client.User == null)
+            return Task.FromResult(AccountStatus.NeedRelogin);
+
+        return Task.FromResult(AccountStatus.Active);
+    }
+
+    public Task ReleaseClientAsync(int accountId)
+    {
+        return _clientPool.RemoveClientAsync(accountId);
+    }
+
+    private static AccountInfo MapToAccountInfo(int accountId, WTelegram.Client client)
+    {
+        var user = client.User!;
+        return new AccountInfo
+        {
+            Id = accountId,
+            TelegramUserId = user.id,
+            Phone = user.phone,
+            Username = user.MainUsername,
+            FirstName = user.first_name,
+            LastName = user.last_name,
+            Status = Models.AccountStatus.Active,
+            LastActiveAt = DateTime.UtcNow
+        };
+    }
+
+    private static string NormalizePhoneForLogin(string phone)
+    {
+        phone = (phone ?? string.Empty).Trim();
+        if (phone.StartsWith("+", StringComparison.Ordinal))
+            phone = phone[1..];
+        if (phone.StartsWith("00", StringComparison.Ordinal))
+            phone = phone[2..];
+
+        Span<char> buf = stackalloc char[phone.Length];
+        var n = 0;
+        foreach (var ch in phone)
+        {
+            if (ch is >= '0' and <= '9')
+                buf[n++] = ch;
+        }
+
+        if (n == 0)
+            throw new ArgumentException("手机号格式不正确，请包含国家代码（例如：+8613800138000）", nameof(phone));
+
+        return new string(buf[..n]);
+    }
+}

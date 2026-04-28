@@ -1,0 +1,43 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using TelegramPanel.Data.Repositories;
+
+namespace TelegramPanel.Data;
+
+/// <summary>
+/// Data层服务注册扩展
+/// </summary>
+public static class ServiceCollectionExtensions
+{
+    public static IServiceCollection AddTelegramPanelData(this IServiceCollection services, string connectionString)
+    {
+        // 注册数据库上下文
+        services.AddDbContext<AppDbContext>(options =>
+            options.UseSqlite(connectionString, sqlite =>
+            {
+                // 避免 Include 多个集合导航时的“笛卡尔爆炸”与性能警告
+                sqlite.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
+            }));
+
+        // 注册所有Repository
+        services.AddScoped<IAccountRepository, AccountRepository>();
+        services.AddScoped<IAccountCategoryRepository, AccountCategoryRepository>();
+        services.AddScoped<IAccountChannelRepository, AccountChannelRepository>();
+        services.AddScoped<IAccountGroupRepository, AccountGroupRepository>();
+        services.AddScoped<IChannelRepository, ChannelRepository>();
+        services.AddScoped<IChannelGroupRepository, ChannelGroupRepository>();
+        services.AddScoped<IGroupRepository, GroupRepository>();
+        services.AddScoped<IGroupCategoryRepository, GroupCategoryRepository>();
+        services.AddScoped<IDataDictionaryRepository, DataDictionaryRepository>();
+        services.AddScoped<IDataDictionaryItemRepository, DataDictionaryItemRepository>();
+        services.AddScoped<IScheduledTaskRepository, ScheduledTaskRepository>();
+        services.AddScoped<IBatchTaskRepository, BatchTaskRepository>();
+        services.AddScoped<IBotRepository, BotRepository>();
+        services.AddScoped<IBotChannelRepository, BotChannelRepository>();
+        services.AddScoped<IBotChannelCategoryRepository, BotChannelCategoryRepository>();
+        services.AddScoped<IBotChannelMemberRepository, BotChannelMemberRepository>();
+        services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
+
+        return services;
+    }
+}

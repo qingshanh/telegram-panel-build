@@ -1,0 +1,682 @@
+@namespace TelegramPanel.Module.BotCheckinAssistant.Pages
+@inject AccountManagementService AccountManagement
+@inject AccountTelegramToolsService AccountTelegramTools
+@inject ISnackbar Snackbar
+@inject ILogger<BotCheckinAssistantPage> Logger
+
+<PageTitle>Bot Check-in Assistant</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4 tp-page-title">Bot Check-in Assistant</MudText>
+
+<MudPaper Class="pa-4" Elevation="0" Outlined="true">
+    <MudStack Spacing="2">
+        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
+            Send scripted messages to one bot with multiple accounts. After each round, review replies and decide whether to continue or stop.
+        </MudAlert>
+
+        <MudTextField @bind-Value="botTarget"
+                      Label="Bot Username or Link"
+                      Variant="Variant.Outlined"
+                      Placeholder="@examplebot or https://t.me/examplebot"
+                      Disabled="@running"
+                      Immediate="true" />
+
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="startParameter"
+                              Label="Start Parameter (Optional)"
+                              Variant="Variant.Outlined"
+                              Placeholder="invite_abc"
+                              Disabled="@running" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudNumericField T="int" @bind-Value="waitTimeoutSeconds"
+                                 Label="Reply Timeout (sec)"
+                                 Variant="Variant.Outlined"
+                                 Min="3"
+                                 Max="300"
+                                 Disabled="@running" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudNumericField T="int" @bind-Value="delayBetweenAccountsSeconds"
+                                 Label="Delay Between Accounts (sec)"
+                                 Variant="Variant.Outlined"
+                                 Min="0"
+                                 Max="60"
+                                 Disabled="@running" />
+            </MudItem>
+        </MudGrid>
+
+        <MudSwitch @bind-Value="autoStartBeforeFirstMessage"
+                   Label="Send /start before first script line"
+                   Disabled="@running" />
+
+        <MudTextField @bind-Value="messageScript"
+                      Label="Message Script (one line per message)"
+                      Variant="Variant.Outlined"
+                      Lines="6"
+                      Immediate="true"
+                      Disabled="@running"
+                      HelperText="Example: /start, checkin, points query. One message per line." />
+
+        <MudDivider />
+
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h6">Accounts</MudText>
+            <MudChip T="string" Color="Color.Primary" Size="Size.Small">Selected @selectedAccountIds.Count / @accounts.Count</MudChip>
+            <MudSpacer />
+            <MudButton Variant="Variant.Outlined"
+                       Color="Color.Default"
+                       StartIcon="@Icons.Material.Filled.Refresh"
+                       Disabled="@running || loadingAccounts"
+                       OnClick="ReloadAccountsAsync">
+                Reload
+            </MudButton>
+        </MudStack>
+
+        <MudTextField @bind-Value="accountSearch"
+                      Label="Search Accounts"
+                      Placeholder="Phone / Username / Nickname / Remark"
+                      Variant="Variant.Outlined"
+                      Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.Search"
+                      Disabled="@running" />
+
+        <MudStack Row="true" Spacing="1">
+            <MudButton Variant="Variant.Text" Color="Color.Primary" Disabled="@running" OnClick="SelectAllFiltered">
+                Select Filtered
+            </MudButton>
+            <MudButton Variant="Variant.Text" Color="Color.Secondary" Disabled="@running" OnClick="ClearSelection">
+                Clear Selection
+            </MudButton>
+        </MudStack>
+
+        <MudTable Items="FilteredAccounts"
+                  Dense="true"
+                  Hover="true"
+                  Loading="@loadingAccounts"
+                  Breakpoint="Breakpoint.Sm">
+            <HeaderContent>
+                <MudTh>Pick</MudTh>
+                <MudTh>ID</MudTh>
+                <MudTh>Phone</MudTh>
+                <MudTh>Username</MudTh>
+                <MudTh>Nickname / Remark</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Pick">
+                    <MudCheckBox T="bool"
+                                 Checked="@selectedAccountIds.Contains(context.Id)"
+                                 CheckedChanged="@(v => ToggleAccount(context.Id, v))"
+                                 Disabled="@running" />
+                </MudTd>
+                <MudTd DataLabel="ID">@context.Id</MudTd>
+                <MudTd DataLabel="Phone">@context.DisplayPhone</MudTd>
+                <MudTd DataLabel="Username">@(!string.IsNullOrWhiteSpace(context.Username) ? $"@{context.Username}" : "-")</MudTd>
+                <MudTd DataLabel="Nickname / Remark">@DisplayName(context)</MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>No accounts matched.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+
+        <MudDivider />
+
+        <MudStack Row="true" Spacing="2">
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.PlayArrow"
+                       Disabled="@(!CanStart)"
+                       OnClick="StartWorkflowAsync">
+                Start First Line
+            </MudButton>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Success"
+                       StartIcon="@Icons.Material.Filled.SkipNext"
+                       Disabled="@(!CanContinue)"
+                       OnClick="ContinueWorkflowAsync">
+                Continue Next Line
+            </MudButton>
+            <MudButton Variant="Variant.Outlined"
+                       Color="Color.Error"
+                       StartIcon="@Icons.Material.Filled.Stop"
+                       Disabled="@(!CanStop)"
+                       OnClick="StopWorkflow">
+                Stop
+            </MudButton>
+            <MudButton Variant="Variant.Text"
+                       Color="Color.Default"
+                       StartIcon="@Icons.Material.Filled.RestartAlt"
+                       Disabled="@(!CanReset)"
+                       OnClick="ResetWorkflow">
+                Reset
+            </MudButton>
+        </MudStack>
+
+        @if (running)
+        {
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
+                Running line @(currentStepIndex + 2)...
+            </MudAlert>
+        }
+        else if (workflowActive && HasNextStep)
+        {
+            <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Dense="true">
+                Line @(currentStepIndex + 1) completed. Next: @Shorten(workflowMessages[currentStepIndex + 1], 120)
+            </MudAlert>
+        }
+        else if (!workflowActive && currentStepIndex >= 0)
+        {
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true">
+                Workflow stopped. You can reset and run again.
+            </MudAlert>
+        }
+    </MudStack>
+</MudPaper>
+
+@if (currentStepResults.Count > 0)
+{
+    <MudPaper Class="pa-4 mt-4" Elevation="0" Outlined="true">
+        <MudText Typo="Typo.h6" Class="mb-2">Current Round: Line @(currentStepIndex + 1)</MudText>
+        <MudText Typo="Typo.body2" Class="mb-3 mud-text-secondary">
+            Message: @Shorten(workflowMessages[currentStepIndex], 200)
+        </MudText>
+        <MudTable Items="currentStepResults" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
+            <HeaderContent>
+                <MudTh>Account</MudTh>
+                <MudTh>Sent</MudTh>
+                <MudTh>Reply</MudTh>
+                <MudTh>Reply Text</MudTh>
+                <MudTh>Buttons</MudTh>
+                <MudTh>Error</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Account">@context.AccountLabel</MudTd>
+                <MudTd DataLabel="Sent">
+                    <MudChip T="string" Size="Size.Small" Color="@(context.SendSuccess ? Color.Success : Color.Error)">
+                        @(context.SendSuccess ? "OK" : "Failed")
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Reply">
+                    <MudChip T="string" Size="Size.Small" Color="@(context.ResponseSuccess ? Color.Success : Color.Default)">
+                        @(context.ResponseSuccess ? "Captured" : "None")
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Reply Text">@ToSingleLine(context.ResponseText, 80)</MudTd>
+                <MudTd DataLabel="Buttons">@ToSingleLine(context.ButtonsSummary, 60)</MudTd>
+                <MudTd DataLabel="Error">@ToSingleLine(context.Error, 80)</MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+
+@if (history.Count > 0)
+{
+    <MudPaper Class="pa-4 mt-4" Elevation="0" Outlined="true">
+        <MudText Typo="Typo.h6" Class="mb-2">Run History</MudText>
+        <MudTable Items="history" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
+            <HeaderContent>
+                <MudTh>Time</MudTh>
+                <MudTh>Line</MudTh>
+                <MudTh>Message</MudTh>
+                <MudTh>Sent OK</MudTh>
+                <MudTh>Reply Captured</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Time">@context.ExecutedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</MudTd>
+                <MudTd DataLabel="Line">@context.StepNumber</MudTd>
+                <MudTd DataLabel="Message">@Shorten(context.Message, 80)</MudTd>
+                <MudTd DataLabel="Sent OK">@($"{context.Results.Count(x => x.SendSuccess)}/{context.Results.Count}")</MudTd>
+                <MudTd DataLabel="Reply Captured">@($"{context.Results.Count(x => x.ResponseSuccess)}/{context.Results.Count}")</MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public string ModuleId { get; set; } = "";
+    [Parameter] public string PageKey { get; set; } = "";
+
+    private bool loadingAccounts = true;
+    private bool running;
+    private bool workflowActive;
+    private int currentStepIndex = -1;
+
+    private string botTarget = string.Empty;
+    private string startParameter = string.Empty;
+    private bool autoStartBeforeFirstMessage = true;
+    private int waitTimeoutSeconds = 25;
+    private int delayBetweenAccountsSeconds = 2;
+    private string messageScript = "/start\ncheckin\npoints";
+    private string accountSearch = string.Empty;
+
+    private List<Account> accounts = new();
+    private readonly HashSet<int> selectedAccountIds = new();
+    private readonly List<string> workflowMessages = new();
+    private readonly List<AccountStepResult> currentStepResults = new();
+    private readonly List<StepHistory> history = new();
+    private readonly Dictionary<int, AccountTelegramToolsService.ResolvedChatTarget> resolvedTargets = new();
+    private readonly Dictionary<int, string> resolvedBotUsernames = new();
+    private CancellationTokenSource? runCts;
+
+    private IEnumerable<Account> FilteredAccounts => accounts.Where(MatchesAccountSearch).OrderBy(x => x.Id);
+
+    private bool CanStart =>
+        !running
+        && !workflowActive
+        && !string.IsNullOrWhiteSpace(botTarget)
+        && selectedAccountIds.Count > 0
+        && ParseScriptMessages(messageScript).Count > 0;
+
+    private bool CanContinue => !running && HasNextStep;
+    private bool CanStop => running || workflowActive;
+    private bool CanReset => !running && (workflowActive || currentStepIndex >= 0 || history.Count > 0);
+    private bool HasNextStep => workflowActive && currentStepIndex + 1 < workflowMessages.Count;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAccountsAsync();
+    }
+
+    private async Task ReloadAccountsAsync()
+    {
+        loadingAccounts = true;
+        try
+        {
+            accounts = (await AccountManagement.GetActiveAccountsAsync())
+                .OrderBy(x => x.Id)
+                .ToList();
+
+            var validIds = accounts.Select(x => x.Id).ToHashSet();
+            selectedAccountIds.RemoveWhere(id => !validIds.Contains(id));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Load accounts failed");
+            Snackbar.Add($"Load accounts failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            loadingAccounts = false;
+        }
+    }
+
+    private void ToggleAccount(int accountId, bool selected)
+    {
+        if (selected)
+            selectedAccountIds.Add(accountId);
+        else
+            selectedAccountIds.Remove(accountId);
+    }
+
+    private Task SelectAllFiltered()
+    {
+        foreach (var account in FilteredAccounts)
+            selectedAccountIds.Add(account.Id);
+        return Task.CompletedTask;
+    }
+
+    private Task ClearSelection()
+    {
+        selectedAccountIds.Clear();
+        return Task.CompletedTask;
+    }
+
+    private async Task StartWorkflowAsync()
+    {
+        if (running)
+            return;
+
+        var messages = ParseScriptMessages(messageScript);
+        if (messages.Count == 0)
+        {
+            Snackbar.Add("Please provide at least one script line.", Severity.Warning);
+            return;
+        }
+
+        if (selectedAccountIds.Count == 0)
+        {
+            Snackbar.Add("Please select accounts first.", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(botTarget))
+        {
+            Snackbar.Add("Please fill bot username or link.", Severity.Warning);
+            return;
+        }
+
+        workflowMessages.Clear();
+        workflowMessages.AddRange(messages);
+        currentStepResults.Clear();
+        history.Clear();
+        resolvedTargets.Clear();
+        resolvedBotUsernames.Clear();
+        currentStepIndex = -1;
+        workflowActive = true;
+
+        await ExecuteNextStepAsync();
+    }
+
+    private async Task ContinueWorkflowAsync()
+    {
+        if (!HasNextStep || running)
+            return;
+
+        await ExecuteNextStepAsync();
+    }
+
+    private Task StopWorkflow()
+    {
+        workflowActive = false;
+        runCts?.Cancel();
+        Snackbar.Add("Workflow stopped.", Severity.Warning);
+        return Task.CompletedTask;
+    }
+
+    private Task ResetWorkflow()
+    {
+        if (running)
+            return Task.CompletedTask;
+
+        workflowActive = false;
+        currentStepIndex = -1;
+        workflowMessages.Clear();
+        currentStepResults.Clear();
+        history.Clear();
+        resolvedTargets.Clear();
+        resolvedBotUsernames.Clear();
+        return Task.CompletedTask;
+    }
+
+    private async Task ExecuteNextStepAsync()
+    {
+        if (!workflowActive)
+            return;
+
+        var stepIndex = currentStepIndex + 1;
+        if (stepIndex < 0 || stepIndex >= workflowMessages.Count)
+        {
+            workflowActive = false;
+            return;
+        }
+
+        await ExecuteStepAsync(stepIndex);
+    }
+
+    private async Task ExecuteStepAsync(int stepIndex)
+    {
+        var selectedAccounts = accounts
+            .Where(x => selectedAccountIds.Contains(x.Id))
+            .OrderBy(x => x.Id)
+            .ToList();
+
+        if (selectedAccounts.Count == 0)
+        {
+            workflowActive = false;
+            Snackbar.Add("No selected accounts available.", Severity.Warning);
+            return;
+        }
+
+        var message = workflowMessages[stepIndex];
+        var stepResults = new List<AccountStepResult>();
+        var timeoutSeconds = Math.Clamp(waitTimeoutSeconds, 3, 300);
+        var delaySeconds = Math.Clamp(delayBetweenAccountsSeconds, 0, 60);
+
+        running = true;
+        currentStepResults.Clear();
+        runCts = new CancellationTokenSource();
+        var cancellationToken = runCts.Token;
+        StateHasChanged();
+
+        try
+        {
+            for (var i = 0; i < selectedAccounts.Count; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var account = selectedAccounts[i];
+                var row = new AccountStepResult
+                {
+                    AccountId = account.Id,
+                    AccountLabel = BuildAccountLabel(account)
+                };
+
+                if (stepIndex == 0 && autoStartBeforeFirstMessage)
+                {
+                    var start = await AccountTelegramTools.StartExternalBotAsync(
+                        account.Id,
+                        botTarget,
+                        startParameter,
+                        cancellationToken,
+                        assumeBotUsername: true);
+                    if (!start.Success)
+                    {
+                        row.Error = start.Error ?? "Start bot failed.";
+                        stepResults.Add(row);
+                        continue;
+                    }
+                }
+
+                if (!resolvedTargets.TryGetValue(account.Id, out var target))
+                {
+                    var resolve = await AccountTelegramTools.ResolveExternalBotTargetAsync(
+                        account.Id,
+                        botTarget,
+                        cancellationToken,
+                        assumeBotUsername: true);
+                    if (!resolve.Success || resolve.Target == null)
+                    {
+                        row.Error = resolve.Error ?? "Resolve bot target failed.";
+                        stepResults.Add(row);
+                        continue;
+                    }
+
+                    target = resolve.Target;
+                    resolvedTargets[account.Id] = target;
+                    if (!string.IsNullOrWhiteSpace(resolve.BotUsername))
+                        resolvedBotUsernames[account.Id] = resolve.BotUsername;
+                }
+
+                var send = await AccountTelegramTools.SendMessageToResolvedChatAsync(
+                    account.Id,
+                    target,
+                    message,
+                    replyToMessageId: null,
+                    cancellationToken: cancellationToken);
+
+                row.SendSuccess = send.Success;
+                if (!send.Success || !send.MessageId.HasValue)
+                {
+                    row.Error = send.Error ?? "Send failed.";
+                    stepResults.Add(row);
+                    continue;
+                }
+
+                var allowedSenders = BuildAllowedSenders(account.Id);
+                var wait = await AccountTelegramTools.WaitForBotVerificationMessageAsync(
+                    account.Id,
+                    target,
+                    send.MessageId.Value,
+                    currentUsername: account.Username,
+                    timeoutSeconds: timeoutSeconds,
+                    messageFilter: static _ => true,
+                    allowedSenderUsernames: allowedSenders,
+                    restrictToAllowedUsernames: allowedSenders.Count > 0,
+                    stopOnUnmatchedMention: false,
+                    cancellationToken: cancellationToken);
+
+                if (!wait.Success || wait.Candidate == null)
+                {
+                    row.Error = wait.Error ?? "Reply not captured.";
+                    stepResults.Add(row);
+                    continue;
+                }
+
+                row.ResponseSuccess = true;
+                row.ResponseText = NormalizeResponseText(wait.Candidate);
+                row.ButtonsSummary = BuildButtonsSummary(wait.Candidate);
+                stepResults.Add(row);
+
+                if (delaySeconds > 0 && i < selectedAccounts.Count - 1)
+                    await Task.Delay(TimeSpan.FromSeconds(delaySeconds), cancellationToken);
+            }
+
+            currentStepIndex = stepIndex;
+            currentStepResults.Clear();
+            currentStepResults.AddRange(stepResults);
+            history.Insert(0, new StepHistory
+            {
+                StepNumber = stepIndex + 1,
+                Message = message,
+                ExecutedAt = DateTimeOffset.Now,
+                Results = stepResults.Select(x => x.Clone()).ToList()
+            });
+
+            if (currentStepIndex >= workflowMessages.Count - 1)
+            {
+                workflowActive = false;
+                Snackbar.Add("All script lines completed.", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add($"Line {currentStepIndex + 1} completed. Review replies, then continue or stop.", Severity.Info);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            Snackbar.Add("Execution canceled.", Severity.Warning);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Execute bot check-in step failed");
+            Snackbar.Add($"Execution failed: {ex.Message}", Severity.Error);
+            workflowActive = false;
+        }
+        finally
+        {
+            running = false;
+            runCts?.Dispose();
+            runCts = null;
+            StateHasChanged();
+        }
+    }
+
+    private IReadOnlyCollection<string> BuildAllowedSenders(int accountId)
+    {
+        if (resolvedBotUsernames.TryGetValue(accountId, out var username) && !string.IsNullOrWhiteSpace(username))
+            return new[] { username };
+
+        return Array.Empty<string>();
+    }
+
+    private bool MatchesAccountSearch(Account account)
+    {
+        var keyword = (accountSearch ?? string.Empty).Trim();
+        if (keyword.Length == 0)
+            return true;
+
+        return (account.DisplayPhone ?? string.Empty).Contains(keyword, StringComparison.OrdinalIgnoreCase)
+               || (account.Username ?? string.Empty).Contains(keyword, StringComparison.OrdinalIgnoreCase)
+               || (account.Nickname ?? string.Empty).Contains(keyword, StringComparison.OrdinalIgnoreCase)
+               || (account.Remark ?? string.Empty).Contains(keyword, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static List<string> ParseScriptMessages(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return new List<string>();
+
+        return raw
+            .Replace("\r", "\n", StringComparison.Ordinal)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToList();
+    }
+
+    private static string BuildAccountLabel(Account account)
+    {
+        var name = !string.IsNullOrWhiteSpace(account.Username)
+            ? $"@{account.Username}"
+            : (!string.IsNullOrWhiteSpace(account.Nickname) ? account.Nickname! : account.DisplayPhone);
+        return $"#{account.Id} {name}";
+    }
+
+    private static string DisplayName(Account account)
+    {
+        if (!string.IsNullOrWhiteSpace(account.Nickname) && !string.IsNullOrWhiteSpace(account.Remark))
+            return $"{account.Nickname} / {account.Remark}";
+        if (!string.IsNullOrWhiteSpace(account.Nickname))
+            return account.Nickname;
+        if (!string.IsNullOrWhiteSpace(account.Remark))
+            return account.Remark;
+        return "-";
+    }
+
+    private static string NormalizeResponseText(TelegramVerificationMessageCandidate candidate)
+    {
+        if (!string.IsNullOrWhiteSpace(candidate.Text))
+            return candidate.Text.Trim();
+        if (candidate.ImageJpegBytes is { Length: > 0 })
+            return "[image]";
+        return "[no text]";
+    }
+
+    private static string? BuildButtonsSummary(TelegramVerificationMessageCandidate candidate)
+    {
+        if (candidate.Buttons.Count == 0)
+            return null;
+
+        return string.Join(" | ", candidate.Buttons.Select(x => Shorten(x.Text, 16)));
+    }
+
+    private static string ToSingleLine(string? text, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return "-";
+        return Shorten(text.Replace("\r", " ", StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal), maxLength);
+    }
+
+    private static string Shorten(string? text, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return "-";
+        var value = text.Trim();
+        if (value.Length <= maxLength)
+            return value;
+        return value[..maxLength] + "...";
+    }
+
+    private sealed class AccountStepResult
+    {
+        public int AccountId { get; init; }
+        public string AccountLabel { get; init; } = string.Empty;
+        public bool SendSuccess { get; set; }
+        public bool ResponseSuccess { get; set; }
+        public string? ResponseText { get; set; }
+        public string? ButtonsSummary { get; set; }
+        public string? Error { get; set; }
+
+        public AccountStepResult Clone()
+        {
+            return new AccountStepResult
+            {
+                AccountId = AccountId,
+                AccountLabel = AccountLabel,
+                SendSuccess = SendSuccess,
+                ResponseSuccess = ResponseSuccess,
+                ResponseText = ResponseText,
+                ButtonsSummary = ButtonsSummary,
+                Error = Error
+            };
+        }
+    }
+
+    private sealed class StepHistory
+    {
+        public int StepNumber { get; init; }
+        public string Message { get; init; } = string.Empty;
+        public DateTimeOffset ExecutedAt { get; init; }
+        public List<AccountStepResult> Results { get; init; } = new();
+    }
+}
+

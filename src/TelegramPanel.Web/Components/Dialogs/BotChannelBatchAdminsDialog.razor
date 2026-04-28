@@ -1,0 +1,518 @@
+@inject AccountManagementService AccountManagement
+@inject BotTelegramService BotTelegram
+@inject BatchTaskManagementService TaskManagement
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject TelegramPanel.Web.Services.ChannelAdminDefaultsService DefaultsService
+@inject TelegramPanel.Web.Services.ChannelAdminPresetsService PresetsService
+@using System.Text.Json
+@using TelegramPanel.Core.BatchTasks
+@using TelegramPanel.Data.Entities
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="2">
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true">
+                <span>将使用“执行账号”为所选 Bot 频道批量设置管理员。执行账号必须是该频道管理员（通过 Bot API 获取管理员列表并与系统账号匹配）。</span>
+                <MudText Typo="Typo.body2" Class="mt-1">
+                    支持：<b>@@username</b>、<b>username</b>。提交后在后台执行，关闭/刷新页面不影响任务。
+                </MudText>
+            </MudAlert>
+
+            <MudText Typo="Typo.subtitle2">目标频道：@channels.Count 个</MudText>
+
+            @if (loadingAdmins)
+            {
+                <MudProgressLinear Indeterminate="true" />
+                <MudText Typo="Typo.caption" Color="Color.Secondary">正在读取频道管理员列表（Bot API）...</MudText>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(adminSummary))
+            {
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@adminSummary</MudText>
+            }
+
+            <MudGrid Spacing="2">
+                <MudItem xs="12" sm="8">
+                    <MudSelect T="string" Value="@selectedPresetName" ValueChanged="OnPresetChanged"
+                               Label="管理员预设（用户名列表）" Variant="Variant.Outlined" Dense="true" Disabled="@(running || loadingPresets)">
+                        <MudSelectItem Value="@string.Empty">（不使用预设）</MudSelectItem>
+                        @foreach (var p in Presets)
+                        {
+                            <MudSelectItem Value="@p.Name">@p.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4" Class="d-flex align-center">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="DeleteSelectedPreset"
+                               Disabled="@(running || loadingPresets || string.IsNullOrWhiteSpace(selectedPresetName))">
+                        删除预设
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+
+            <MudSelect @bind-Value="selectedAccountId" Label="执行账号" Variant="Variant.Outlined" Dense="true"
+                       Disabled="@(running || loadingAdmins || eligibleAccounts.Count == 0)">
+                <MudSelectItem Value="0">自动选择（按频道）</MudSelectItem>
+                @foreach (var a in eligibleAccounts)
+                {
+                    <MudSelectItem Value="@a.Id">@FormatAccountLabel(a)</MudSelectItem>
+                }
+            </MudSelect>
+
+            @if (eligibleAccounts.Count == 0 && !loadingAdmins && channels.Count > 0)
+            {
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
+                    当前所选频道中未发现“既是频道管理员又在系统中的账号”。你仍可继续执行，但这些频道会被跳过。
+                </MudAlert>
+            }
+
+            <MudTextField @bind-Value="usernamesText" Label="用户名列表（换行分隔）" Variant="Variant.Outlined" Lines="8"
+                          HelperText="@UsernamesHelperText" />
+
+            <MudGrid Spacing="2">
+                <MudItem xs="12" sm="8">
+                    <MudTextField @bind-Value="presetNameToSave" Label="保存当前用户名为预设组（名称）"
+                                  Variant="Variant.Outlined" Disabled="@(running || loadingPresets)" />
+                </MudItem>
+                <MudItem xs="12" sm="4" Class="d-flex align-center">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SavePreset"
+                               Disabled="@(running || loadingPresets || string.IsNullOrWhiteSpace(presetNameToSave))">
+                        保存为预设
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+
+            <MudTextField @bind-Value="adminTitle" Label="管理员头衔" Variant="Variant.Outlined"
+                          HelperText="例如：Admin/Editor。留空将使用默认值。" />
+
+            <MudText Typo="Typo.subtitle2">权限（可多选）</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                说明：这里选择的是“你希望目标账号拥有的权限”。如果设置后发现某些权限未生效，面板会提示缺失的权限名称。
+            </MudText>
+
+            <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
+                <MudButton Variant="Variant.Outlined" OnClick="@(() => ApplyRights(AdminRights.BasicAdmin))" Disabled="@running">常用权限</MudButton>
+                <MudButton Variant="Variant.Outlined" OnClick="@(() => ApplyRights(FullRights))" Disabled="@running">全选权限</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Warning" OnClick="@(() => ApplyRights(AdminRights.None))" Disabled="@running">清空</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsDefaultRightsAsync" Disabled="@running">保存为默认权限</MudButton>
+            </MudStack>
+
+            <MudPaper Outlined="true" Class="pa-3">
+                <MudGrid Spacing="2">
+                    <MudItem xs="12" sm="6" md="4"><MudCheckBox T="bool" Dense="true" @bind-Value="rights.ChangeInfo" Label="修改信息" Disabled="@running" /></MudItem>
+                    <MudItem xs="12" sm="6" md="4"><MudCheckBox T="bool" Dense="true" @bind-Value="rights.PostMessages" Label="发消息" Disabled="@running" /></MudItem>
+                    <MudItem xs="12" sm="6" md="4"><MudCheckBox T="bool" Dense="true" @bind-Value="rights.EditMessages" Label="编辑消息" Disabled="@running" /></MudItem>
+                    <MudItem xs="12" sm="6" md="4"><MudCheckBox T="bool" Dense="true" @bind-Value="rights.DeleteMessages" Label="删除消息" Disabled="@running" /></MudItem>
+                    <MudItem xs="12" sm="6" md="4"><MudCheckBox T="bool" Dense="true" @bind-Value="rights.BanUsers" Label="封禁用户" Disabled="@running" /></MudItem>
+                    <MudItem xs="12" sm="6" md="4"><MudCheckBox T="bool" Dense="true" @bind-Value="rights.InviteUsers" Label="邀请用户" Disabled="@running" /></MudItem>
+                    <MudItem xs="12" sm="6" md="4"><MudCheckBox T="bool" Dense="true" @bind-Value="rights.PinMessages" Label="置顶消息" Disabled="@running" /></MudItem>
+                    <MudItem xs="12" sm="6" md="4"><MudCheckBox T="bool" Dense="true" @bind-Value="rights.ManageCall" Label="语音/直播" Disabled="@running" /></MudItem>
+                    <MudItem xs="12" sm="6" md="4"><MudCheckBox T="bool" Dense="true" @bind-Value="rights.AddAdmins" Label="添加管理员" Disabled="@running" /></MudItem>
+                    <MudItem xs="12" sm="6" md="4"><MudCheckBox T="bool" Dense="true" @bind-Value="rights.Anonymous" Label="匿名" Disabled="@running" /></MudItem>
+                    <MudItem xs="12" sm="6" md="4"><MudCheckBox T="bool" Dense="true" @bind-Value="rights.ManageTopics" Label="管理话题" Disabled="@running" /></MudItem>
+                </MudGrid>
+            </MudPaper>
+
+            <MudNumericField @bind-Value="delayMs" Label="操作间隔（毫秒）" Variant="Variant.Outlined" Min="0" Max="30000"
+                             HelperText="建议设置 1000-2500ms，避免触发风控（会额外加少量随机抖动）。" />
+
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="CancelOrClose">
+            关闭
+        </MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Submit" Disabled="@(running || channels.Count == 0)">
+            提交后台任务
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code
+{
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public int BotId { get; set; }
+    [Parameter] public List<BotChannel> Channels { get; set; } = new();
+
+    private readonly List<Account> eligibleAccounts = new();
+    private readonly Dictionary<long, Account> accountsByUserId = new();
+
+    private List<BotChannel> channels = new();
+    private int selectedAccountId;
+    private string usernamesText = "";
+    private string adminTitle = "Admin";
+    private int delayMs = 1500;
+    private const string UsernamesHelperText = "每行一个 username 或 @username。提交后按“频道 × 用户”在后台执行，可在任务中心查看。";
+
+    private bool loadingAdmins;
+    private string? adminSummary;
+
+    private bool loadingPresets;
+    private List<TelegramPanel.Web.Services.ChannelAdminPreset> Presets { get; set; } = new();
+    private string selectedPresetName = "";
+    private string presetNameToSave = "";
+
+    private RightsModel rights = new();
+    private static readonly AdminRights FullRights =
+        AdminRights.ChangeInfo
+        | AdminRights.PostMessages
+        | AdminRights.EditMessages
+        | AdminRights.DeleteMessages
+        | AdminRights.BanUsers
+        | AdminRights.InviteUsers
+        | AdminRights.PinMessages
+        | AdminRights.ManageCall
+        | AdminRights.AddAdmins
+        | AdminRights.Anonymous
+        | AdminRights.ManageTopics;
+
+    private bool running;
+
+    private AdminRights SelectedRights => rights.ToRights();
+
+    protected override async Task OnInitializedAsync()
+    {
+        channels = (Channels ?? new List<BotChannel>())
+            .Where(x => x != null)
+            .GroupBy(x => x.TelegramId)
+            .Select(x => x.First())
+            .ToList();
+
+        await LoadAccountsAsync();
+
+        // 默认权限：优先读取上次保存的默认值；否则使用“常用权限”
+        var defaults = await DefaultsService.GetAsync();
+        ApplyRights(defaults?.Rights ?? AdminRights.BasicAdmin);
+
+        await ReloadPresetsAsync();
+
+        if (BotId > 0 && channels.Count > 0)
+            await LoadAdminsAndEligibleAccountsAsync();
+    }
+
+    private async Task LoadAccountsAsync()
+    {
+        var all = (await AccountManagement.GetAllAccountsAsync()).ToList();
+        accountsByUserId.Clear();
+        foreach (var a in all.Where(x => x.IsActive && x.Category?.ExcludeFromOperations != true))
+        {
+            if (a.UserId <= 0)
+                continue;
+            if (!accountsByUserId.ContainsKey(a.UserId))
+                accountsByUserId[a.UserId] = a;
+        }
+    }
+
+    private async Task LoadAdminsAndEligibleAccountsAsync()
+    {
+        loadingAdmins = true;
+        adminSummary = null;
+        eligibleAccounts.Clear();
+        try
+        {
+            var eligibleUserIds = new HashSet<long>();
+            var matchedChannels = 0;
+
+            foreach (var ch in channels)
+            {
+                var admins = new List<BotTelegramService.BotChatAdminInfo>();
+                try
+                {
+                    admins = await BotTelegram.GetChatAdminsAsync(BotId, ch.TelegramId, CancellationToken.None);
+                    foreach (var a in admins)
+                    {
+                        if (accountsByUserId.ContainsKey(a.UserId))
+                            eligibleUserIds.Add(a.UserId);
+                    }
+
+                    if (admins.Any(a => accountsByUserId.ContainsKey(a.UserId)))
+                        matchedChannels++;
+                }
+                catch
+                {
+                    // ignore
+                }
+
+            }
+
+            foreach (var uid in eligibleUserIds)
+            {
+                if (accountsByUserId.TryGetValue(uid, out var acc))
+                    eligibleAccounts.Add(acc);
+            }
+
+            eligibleAccounts.Sort((a, b) => string.Compare(FormatAccountLabel(a), FormatAccountLabel(b), StringComparison.OrdinalIgnoreCase));
+            adminSummary = $"可用执行账号：{eligibleAccounts.Count} 个；可执行频道：{matchedChannels}/{channels.Count}。";
+        }
+        finally
+        {
+            loadingAdmins = false;
+        }
+    }
+
+    private async Task ReloadPresetsAsync()
+    {
+        loadingPresets = true;
+        try
+        {
+            Presets = (await PresetsService.GetPresetsAsync()).ToList();
+        }
+        finally
+        {
+            loadingPresets = false;
+        }
+    }
+
+    private Task OnPresetChanged(string? name)
+    {
+        selectedPresetName = name ?? "";
+        if (string.IsNullOrWhiteSpace(selectedPresetName))
+            return Task.CompletedTask;
+
+        var p = Presets.FirstOrDefault(x => string.Equals(x.Name, selectedPresetName, StringComparison.OrdinalIgnoreCase));
+        if (p != null)
+            usernamesText = string.Join(Environment.NewLine, p.Usernames.Select(x => $"@{x}"));
+
+        return Task.CompletedTask;
+    }
+
+    private async Task SavePreset()
+    {
+        var name = (presetNameToSave ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            Snackbar.Add("请输入预设名称", Severity.Warning);
+            return;
+        }
+
+        var usernames = ParseUsernames(usernamesText);
+        if (usernames.Count == 0)
+        {
+            Snackbar.Add("请至少输入一个用户名", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            await PresetsService.SavePresetAsync(name, usernames);
+            Snackbar.Add("已保存预设", Severity.Success);
+            presetNameToSave = "";
+            await ReloadPresetsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"保存预设失败：{ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteSelectedPreset()
+    {
+        if (string.IsNullOrWhiteSpace(selectedPresetName))
+            return;
+
+        bool? ok = await DialogService.ShowMessageBox(
+            title: "删除预设",
+            message: $"确定删除预设“{selectedPresetName}”吗？",
+            yesText: "删除",
+            cancelText: "取消");
+
+        if (ok != true)
+            return;
+
+        try
+        {
+            await PresetsService.DeletePresetAsync(selectedPresetName);
+            Snackbar.Add("已删除预设", Severity.Success);
+            selectedPresetName = "";
+            await ReloadPresetsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"删除预设失败：{ex.Message}", Severity.Error);
+        }
+    }
+
+    private void ApplyRights(AdminRights selected)
+    {
+        rights = RightsModel.FromRights(selected);
+    }
+
+    private async Task SaveAsDefaultRightsAsync()
+    {
+        try
+        {
+            await DefaultsService.SaveAsync(new TelegramPanel.Web.Services.ChannelAdminDefaults(SelectedRights));
+            Snackbar.Add("已保存默认权限", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"保存失败：{ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task Submit()
+    {
+        if (running)
+            return;
+
+        if (BotId <= 0)
+        {
+            Snackbar.Add("BotId 无效", Severity.Error);
+            return;
+        }
+
+        var usernames = ParseUsernames(usernamesText);
+        if (usernames.Count == 0)
+        {
+            Snackbar.Add("请至少输入一个用户名", Severity.Warning);
+            return;
+        }
+
+        if (channels.Count == 0)
+        {
+            Snackbar.Add("未选择任何频道", Severity.Info);
+            return;
+        }
+
+        var title = string.IsNullOrWhiteSpace(adminTitle) ? "Admin" : adminTitle.Trim();
+
+        bool? confirm = await DialogService.ShowMessageBox(
+            "确认执行",
+            $"设置管理员：{channels.Count} 个频道 × {usernames.Count} 个用户（共 {channels.Count * usernames.Count} 次操作）。是否继续？",
+            yesText: "继续", cancelText: "取消");
+
+        if (confirm != true)
+            return;
+
+        running = true;
+        try
+        {
+            var config = new BotChannelSetAdminsByAccountTaskConfig
+            {
+                BotId = BotId,
+                SelectedAccountId = selectedAccountId,
+                AdminTitle = title,
+                DelayMs = delayMs,
+                Rights = (int)SelectedRights,
+                Usernames = usernames,
+                Channels = channels
+                    .Select(x => new BotTaskChannelItem
+                    {
+                        TelegramId = x.TelegramId,
+                        Title = x.Title ?? x.TelegramId.ToString()
+                    })
+                    .ToList(),
+                RequestedAtUtc = DateTime.UtcNow
+            };
+
+            var task = new BatchTask
+            {
+                TaskType = BatchTaskTypes.BotChannelSetAdminsByAccount,
+                Total = config.Channels.Count * config.Usernames.Count,
+                Completed = 0,
+                Failed = 0,
+                Config = JsonSerializer.Serialize(config, new JsonSerializerOptions
+                {
+                    WriteIndented = true
+                })
+            };
+
+            var created = await TaskManagement.CreateTaskAsync(task);
+            Snackbar.Add($"已提交后台任务 #{created.Id}。关闭或刷新页面不影响执行，可到【任务中心】查看进度与失败明细。", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(created.Id));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"提交失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            running = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CancelOrClose()
+    {
+        if (running)
+            return;
+        MudDialog.Close();
+    }
+
+    private static List<string> ParseUsernames(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return new List<string>();
+
+        return text
+            .Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => (x ?? string.Empty).Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.StartsWith("@", StringComparison.Ordinal) ? x.Substring(1) : x)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string FormatAccountLabel(Account account)
+    {
+        var nickname = string.IsNullOrWhiteSpace(account.Nickname) ? null : account.Nickname.Trim();
+        var username = string.IsNullOrWhiteSpace(account.Username) ? null : account.Username.Trim();
+
+        var namePart = nickname ?? account.Phone;
+        if (!string.IsNullOrWhiteSpace(username))
+            return $"{namePart} (@{username})";
+        return namePart;
+    }
+
+    private sealed class RightsModel
+    {
+        public bool ChangeInfo { get; set; }
+        public bool PostMessages { get; set; }
+        public bool EditMessages { get; set; }
+        public bool DeleteMessages { get; set; }
+        public bool BanUsers { get; set; }
+        public bool InviteUsers { get; set; }
+        public bool PinMessages { get; set; }
+        public bool ManageCall { get; set; }
+        public bool AddAdmins { get; set; }
+        public bool Anonymous { get; set; }
+        public bool ManageTopics { get; set; }
+
+        public AdminRights ToRights()
+        {
+            var r = AdminRights.None;
+            if (ChangeInfo) r |= AdminRights.ChangeInfo;
+            if (PostMessages) r |= AdminRights.PostMessages;
+            if (EditMessages) r |= AdminRights.EditMessages;
+            if (DeleteMessages) r |= AdminRights.DeleteMessages;
+            if (BanUsers) r |= AdminRights.BanUsers;
+            if (InviteUsers) r |= AdminRights.InviteUsers;
+            if (PinMessages) r |= AdminRights.PinMessages;
+            if (ManageCall) r |= AdminRights.ManageCall;
+            if (AddAdmins) r |= AdminRights.AddAdmins;
+            if (Anonymous) r |= AdminRights.Anonymous;
+            if (ManageTopics) r |= AdminRights.ManageTopics;
+            return r;
+        }
+
+        public static RightsModel FromRights(AdminRights rights)
+        {
+            return new RightsModel
+            {
+                ChangeInfo = rights.HasFlag(AdminRights.ChangeInfo),
+                PostMessages = rights.HasFlag(AdminRights.PostMessages),
+                EditMessages = rights.HasFlag(AdminRights.EditMessages),
+                DeleteMessages = rights.HasFlag(AdminRights.DeleteMessages),
+                BanUsers = rights.HasFlag(AdminRights.BanUsers),
+                InviteUsers = rights.HasFlag(AdminRights.InviteUsers),
+                PinMessages = rights.HasFlag(AdminRights.PinMessages),
+                ManageCall = rights.HasFlag(AdminRights.ManageCall),
+                AddAdmins = rights.HasFlag(AdminRights.AddAdmins),
+                Anonymous = rights.HasFlag(AdminRights.Anonymous),
+                ManageTopics = rights.HasFlag(AdminRights.ManageTopics)
+            };
+        }
+    }
+}

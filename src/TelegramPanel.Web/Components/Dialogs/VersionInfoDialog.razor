@@ -1,0 +1,208 @@
+@namespace TelegramPanel.Web.Components.Dialogs
+@using TelegramPanel.Web.Services
+@inject AppSelfUpdateService SelfUpdate
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="2">
+            <MudText Typo="Typo.h6">Telegram Panel</MudText>
+            <MudText Typo="Typo.body2">
+                <strong>版本：</strong>@VersionService.Version
+            </MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                <strong>运行环境：</strong>@(_updateInfo?.IsDocker == true ? "Docker" : "非 Docker")
+            </MudText>
+            <MudLink Href="https://github.com/moeacgx/Telegram-Panel"
+                     Target="_blank"
+                     rel="noopener noreferrer">
+                GitHub 仓库
+            </MudLink>
+
+            <MudDivider Class="my-2" />
+
+            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                <MudText Typo="Typo.subtitle2">检查更新</MudText>
+                <MudStack Row="true" Spacing="1">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Disabled="@_checking" OnClick="ForceRefresh">
+                        @if (_checking)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        }
+                        立即检查
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Warning"
+                               Disabled="@(!CanApply || _updating)"
+                               OnClick="ApplyUpdate">
+                        @if (_updating)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        }
+                        一键更新并重启
+                    </MudButton>
+                </MudStack>
+            </MudStack>
+
+            @if (AutoPrompt && _updateInfo is { Success: true, UpdateAvailable: true })
+            {
+                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true">
+                    检测到新版本，是否现在执行一键更新？
+                </MudAlert>
+            }
+
+            @if (_updateInfo == null)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">正在检查…</MudText>
+            }
+            else if (!_updateInfo.Success)
+            {
+                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true">
+                    检查失败：@_updateInfo.Error
+                </MudAlert>
+            }
+            else if (!_updateInfo.Enabled)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">已禁用自动更新</MudText>
+            }
+            else if (_updateInfo.UpdateAvailable)
+            {
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
+                    发现新版本：v@_updateInfo.LatestVersion（当前 v@_updateInfo.CurrentVersion）
+                    @if (!string.IsNullOrWhiteSpace(_updateInfo.Url))
+                    {
+                        <div style="margin-top: 6px;">
+                            <MudLink Href="@_updateInfo.Url" Target="_blank" rel="noopener noreferrer">查看发布页</MudLink>
+                        </div>
+                    }
+                </MudAlert>
+
+                @if (!string.IsNullOrWhiteSpace(_updateInfo.AssetName))
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        匹配更新包：@_updateInfo.AssetName
+                    </MudText>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(_updateInfo.BlockedReason))
+                {
+                    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true">
+                        无法一键更新：@_updateInfo.BlockedReason
+                    </MudAlert>
+                }
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    当前已是最新版本（v@_updateInfo.CurrentVersion）
+                </MudText>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(_updateInfo?.Notes))
+            {
+                <MudText Typo="Typo.subtitle2">Latest Release Notes</MudText>
+                <MudPaper Outlined="true" Class="pa-3" Style="max-height: 260px; overflow: auto;">
+                    <MudText Typo="Typo.body2" Style="white-space: pre-wrap; user-select: text;">@_updateInfo.Notes</MudText>
+                </MudPaper>
+            }
+
+            @if (_updateInfo != null)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    最近检查：@_updateInfo.CheckedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+                </MudText>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="Close">关闭</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code
+{
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public bool AutoPrompt { get; set; }
+
+    private bool _checking;
+    private bool _updating;
+    private AppSelfUpdateInfo? _updateInfo;
+
+    private bool CanApply =>
+        _updateInfo is
+        {
+            Success: true,
+            Enabled: true,
+            UpdateAvailable: true,
+            CanApply: true
+        };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _updateInfo = await SelfUpdate.CheckLatestAsync(forceRefresh: false);
+    }
+
+    private async Task ForceRefresh()
+    {
+        _checking = true;
+        try
+        {
+            _updateInfo = await SelfUpdate.CheckLatestAsync(forceRefresh: true);
+        }
+        finally
+        {
+            _checking = false;
+        }
+    }
+
+    private async Task ApplyUpdate()
+    {
+        if (_updating)
+            return;
+
+        if (_updateInfo == null || !CanApply)
+        {
+            Snackbar.Add(_updateInfo?.BlockedReason ?? "当前条件不满足一键更新", Severity.Warning);
+            return;
+        }
+
+        var target = _updateInfo.LatestTag ?? _updateInfo.LatestVersion ?? "最新版本";
+        bool? ok = await DialogService.ShowMessageBox(
+            "确认一键更新",
+            $"将升级到 {target}，并在部署后自动重启服务。是否继续？",
+            yesText: "继续",
+            cancelText: "取消");
+
+        if (ok != true)
+            return;
+
+        _updating = true;
+        try
+        {
+            var result = await SelfUpdate.ApplyLatestAsync();
+            if (result.Success)
+            {
+                Snackbar.Add(result.Message, Severity.Success);
+                MudDialog.Close(DialogResult.Ok(true));
+                return;
+            }
+
+            Snackbar.Add(result.Message, Severity.Error);
+            _updateInfo = await SelfUpdate.CheckLatestAsync(forceRefresh: true);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"执行更新异常：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _updating = false;
+        }
+    }
+
+    private void Close()
+    {
+        MudDialog.Close();
+    }
+}

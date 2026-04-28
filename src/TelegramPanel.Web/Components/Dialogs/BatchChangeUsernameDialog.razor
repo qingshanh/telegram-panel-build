@@ -1,0 +1,301 @@
+@namespace TelegramPanel.Web.Components.Dialogs
+@inject AccountManagementService AccountManagement
+@inject TelegramPanel.Core.Services.Telegram.AccountTelegramToolsService AccountTelegramTools
+@inject TelegramPanel.Core.Services.AccountRiskService RiskService
+@inject TemplateRenderingService TemplateRendering
+@inject DataDictionaryService DictionaryService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@using System.Text.RegularExpressions
+@using TelegramPanel.Data.Entities
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="2">
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true">
+                将对选中的账号批量修改用户名（t.me/xxx）。用户名模板支持 `{time}` 和文本字典变量；批量执行时建议使用文本字典提供不同值，避免重复。
+            </MudAlert>
+
+            <MudText Typo="Typo.subtitle2">账号数量：@accounts.Count</MudText>
+
+            <MudTextField @bind-Value="usernameTemplate" Label="用户名模板" Variant="Variant.Outlined" Required="true"
+                          HelperText="请输入用户名模板（不要带开头的 at 符号）。例如：tg_{city}_{time}" />
+
+            @if (textDictionaryNames.Count > 0)
+            {
+                <MudText Typo="Typo.caption">可用文本变量：@string.Join("、", textDictionaryNames.Select(x => $"{{{x}}}"))</MudText>
+            }
+
+            @if (running || results.Count > 0)
+            {
+                <MudDivider Class="my-2" />
+
+                <MudStack direction="Row" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudText Typo="Typo.body2">进度：@processed / @accounts.Count</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Success">成功：@success</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Error">失败：@failed</MudText>
+                    @if (running)
+                    {
+                        <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+                    }
+                </MudStack>
+
+                <MudTable Items="@results" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
+                    <HeaderContent>
+                        <MudTh>账号</MudTh>
+                        <MudTh>新用户名</MudTh>
+                        <MudTh>结果</MudTh>
+                        <MudTh>原因</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="账号">@context.Phone</MudTd>
+                        <MudTd DataLabel="新用户名">@context.NewUsername</MudTd>
+                        <MudTd DataLabel="结果">
+                            <MudChip T="string" Size="Size.Small" Color="@(context.Success ? Color.Success : Color.Error)">
+                                @(context.Success ? "成功" : "失败")
+                            </MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="原因">@((context.Error ?? "").Trim())</MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="Cancel" Disabled="@running">关闭</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Start" Disabled="@running">
+            @if (running)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                <span>执行中...</span>
+            }
+            else
+            {
+                <span>开始修改</span>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code
+{
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public IReadOnlyList<int> AccountIds { get; set; } = Array.Empty<int>();
+
+    private static readonly Regex TemplateTokenRegex = new(@"\{(?<name>[a-zA-Z0-9_]+)\}", RegexOptions.Compiled);
+    private static readonly Regex UsernameRegex = new(@"^[A-Za-z][A-Za-z0-9_]{4,31}$", RegexOptions.Compiled);
+
+    private readonly HashSet<string> supportedTextTokens = new(StringComparer.OrdinalIgnoreCase);
+    private List<Account> accounts = new();
+    private List<string> textDictionaryNames = new();
+    private string usernameTemplate = "";
+
+    private bool running;
+    private int processed;
+    private int success;
+    private int failed;
+    private readonly List<ResultRow> results = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var ids = AccountIds?.Distinct().Where(x => x > 0).ToList() ?? new List<int>();
+        if (ids.Count == 0)
+            return;
+
+        var all = await AccountManagement.GetAllAccountsAsync();
+        accounts = all.Where(a => ids.Contains(a.Id)).OrderBy(a => a.Id).ToList();
+
+        var dictionaries = await DictionaryService.GetAllAsync();
+        textDictionaryNames = dictionaries
+            .Where(x => x.IsEnabled && string.Equals(x.Type, DataDictionaryTypes.Text, StringComparison.OrdinalIgnoreCase))
+            .Select(x => x.Name)
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        supportedTextTokens.Clear();
+        foreach (var item in textDictionaryNames)
+            supportedTextTokens.Add(item);
+    }
+
+    private async Task Start()
+    {
+        if (running)
+            return;
+
+        if (accounts.Count == 0)
+        {
+            Snackbar.Add("未选择账号", Severity.Warning);
+            return;
+        }
+
+        var template = (usernameTemplate ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(template))
+        {
+            Snackbar.Add("用户名模板不能为空", Severity.Warning);
+            return;
+        }
+
+        if (accounts.Count > 1 && !TemplateTokenRegex.IsMatch(template))
+        {
+            Snackbar.Add("批量修改多个账号时，用户名模板至少需要包含一个变量（例如 {time} 或 {username_pool}）", Severity.Warning);
+            return;
+        }
+
+        if (!ValidateTemplate(template, out var templateErr))
+        {
+            Snackbar.Add(templateErr ?? "用户名模板不合法", Severity.Warning);
+            return;
+        }
+
+        var batchCheck = RiskService.CheckBatchAccounts(accounts);
+        if (batchCheck.HasRiskyAccounts)
+        {
+            var parameters = new DialogParameters
+            {
+                ["Message"] = $"检测到 {batchCheck.RiskyCount} 个风险账号",
+                ["DetailedMessage"] = batchCheck.GetRiskySummary(),
+                ["ShowRecommendations"] = true,
+                ["ShowExcludeOption"] = true,
+                ["RiskyAccounts"] = batchCheck.RiskyAccounts.ToList()
+            };
+            var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Large };
+            var dialog = DialogService.Show<TelegramPanel.Web.Components.Dialogs.RiskWarningDialog>("批量操作风控警告", parameters, options);
+            var result = await dialog.Result;
+
+            if (result?.Canceled ?? true)
+                return;
+
+            if (result.Data is TelegramPanel.Core.Services.RiskWarningAction action && action == TelegramPanel.Core.Services.RiskWarningAction.ExcludeRisky)
+            {
+                accounts = batchCheck.SafeAccounts.ToList();
+                if (accounts.Count == 0)
+                {
+                    Snackbar.Add("排除风险账号后无剩余账号", Severity.Info);
+                    return;
+                }
+            }
+        }
+
+        bool? confirm = await DialogService.ShowMessageBox(
+            "确认修改",
+            $"将对 {accounts.Count} 个账号批量修改用户名。是否继续？",
+            yesText: "继续", cancelText: "取消");
+
+        if (confirm != true)
+            return;
+
+        running = true;
+        processed = 0;
+        success = 0;
+        failed = 0;
+        results.Clear();
+
+        try
+        {
+            var generated = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var account in accounts)
+            {
+                string renderedTemplate;
+                try
+                {
+                    renderedTemplate = await TemplateRendering.RenderTextTemplateAsync(template, CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    processed++;
+                    failed++;
+                    results.Add(new ResultRow(account.DisplayPhone, string.Empty, false, $"用户名模板解析失败：{ex.Message}"));
+                    StateHasChanged();
+                    continue;
+                }
+
+                if (!TryPrepareUsername(renderedTemplate, generated, out var newUsername, out var prepareError))
+                {
+                    processed++;
+                    failed++;
+                    results.Add(new ResultRow(account.DisplayPhone, newUsername, false, prepareError ?? "生成用户名失败"));
+                    StateHasChanged();
+                    continue;
+                }
+
+                var (ok, err, username) = await AccountTelegramTools.UpdateUsernameAsync(
+                    accountId: account.Id,
+                    username: newUsername,
+                    cancellationToken: CancellationToken.None);
+
+                processed++;
+                if (ok)
+                    success++;
+                else
+                    failed++;
+
+                results.Add(new ResultRow(account.DisplayPhone, newUsername, ok, err));
+
+                if (ok)
+                {
+                    account.Username = username;
+                    await AccountManagement.UpdateAccountAsync(account);
+                }
+
+                StateHasChanged();
+            }
+
+            Snackbar.Add($"用户名批量修改完成：成功 {success}/{accounts.Count}，失败 {failed}/{accounts.Count}", failed == 0 ? Severity.Success : Severity.Warning);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"执行失败：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            running = false;
+        }
+    }
+
+    private bool ValidateTemplate(string? template, out string? error)
+    {
+        error = null;
+        foreach (Match token in TemplateTokenRegex.Matches(template ?? string.Empty))
+        {
+            var tokenName = token.Groups["name"].Value;
+            if (string.Equals(tokenName, "time", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (!supportedTextTokens.Contains(tokenName))
+            {
+                error = $"不支持的文本变量：{{{tokenName}}}。请使用 {{time}} 或已启用的文本字典变量。";
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TryPrepareUsername(
+        string templateResult,
+        HashSet<string> reserved,
+        out string username,
+        out string? error)
+    {
+        username = (templateResult ?? string.Empty).Trim().TrimStart('@');
+        error = null;
+
+        if (!UsernameRegex.IsMatch(username))
+        {
+            error = "生成的用户名不符合 Telegram 规则：仅允许字母/数字/下划线，长度 5-32，且必须以字母开头。";
+            return false;
+        }
+
+        if (!reserved.Add(username))
+        {
+            error = "本次批量操作生成了重复用户名，请调整文本字典内容或模板。";
+            return false;
+        }
+
+        return true;
+    }
+
+    private void Cancel() => MudDialog.Close();
+
+    private sealed record ResultRow(string Phone, string NewUsername, bool Success, string? Error);
+}
