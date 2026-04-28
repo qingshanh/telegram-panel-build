@@ -24,7 +24,7 @@ jobs:
       - name: Build TPM package
         shell: pwsh
         run: |
-          powershell tools/package-module.ps1 `
+          ./tools/package-module.ps1 `
             -Project "src/Modules/TelegramPanel.Module.BotCheckinAssistant/TelegramPanel.Module.BotCheckinAssistant.csproj" `
             -Manifest "src/Modules/TelegramPanel.Module.BotCheckinAssistant/manifest.json"
 
@@ -39,4 +39,3 @@ jobs:
           name: bot-checkin-module-tpm
           path: artifacts/modules/community.bot-checkin-assistant-*.tpm
           if-no-files-found: error
-
