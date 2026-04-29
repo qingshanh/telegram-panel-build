@@ -21,7 +21,7 @@ powershell tools/package-module.ps1 `
 
 默认输出文件：
 
-- `artifacts/modules/community.bot-checkin-assistant-1.0.3.tpm`
+- `artifacts/modules/community.bot-checkin-assistant-1.1.0.tpm`
 
 ## 在面板中安装
 

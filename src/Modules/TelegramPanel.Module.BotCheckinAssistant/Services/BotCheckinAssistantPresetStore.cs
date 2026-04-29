@@ -17,8 +17,15 @@ public sealed record BotCheckinAssistantPreset(
     IReadOnlyList<int> SelectedAccountIds,
     DateTimeOffset UpdatedAtUtc);
 
+public sealed record BotCommandHistoryItem(string Command, DateTimeOffset UpdatedAtUtc);
+
 public sealed class BotCheckinAssistantPresetStore
 {
+    private const string RootSectionName = "BotCheckinAssistant";
+    private const string PresetsSectionName = "Presets";
+    private const string RecentCommandsSectionName = "RecentCommands";
+    private const string BotUsageSectionName = "BotUsage";
+
     private readonly string _configFilePath;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
@@ -35,70 +42,55 @@ public sealed class BotCheckinAssistantPresetStore
 
     public async Task<IReadOnlyList<BotCheckinAssistantPreset>> GetPresetsAsync(CancellationToken cancellationToken = default)
     {
-        try
+        var root = await LoadRootAsync(cancellationToken);
+        if (GetSection(root, PresetsSectionName) is not JsonObject presetsObj)
+            return Array.Empty<BotCheckinAssistantPreset>();
+
+        var list = new List<BotCheckinAssistantPreset>();
+        foreach (var pair in presetsObj)
         {
-            if (!File.Exists(_configFilePath))
-                return Array.Empty<BotCheckinAssistantPreset>();
+            var name = (pair.Key ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(name) || pair.Value is not JsonObject presetObj)
+                continue;
 
-            var json = await File.ReadAllTextAsync(_configFilePath, cancellationToken);
-            var root = JsonNode.Parse(json)?.AsObject();
-            if (root?["BotCheckinAssistant"] is not JsonObject section
-                || section["Presets"] is not JsonObject presetsObj)
-                return Array.Empty<BotCheckinAssistantPreset>();
+            var botTarget = presetObj["BotTarget"]?.GetValue<string>()?.Trim() ?? string.Empty;
+            var startParameter = presetObj["StartParameter"]?.GetValue<string>()?.Trim() ?? string.Empty;
+            var autoStart = presetObj["AutoStartBeforeFirstMessage"]?.GetValue<bool>() ?? true;
+            var waitTimeoutSeconds = Math.Clamp(presetObj["WaitTimeoutSeconds"]?.GetValue<int>() ?? 25, 3, 300);
+            var delayBetweenAccountsSeconds = Math.Clamp(presetObj["DelayBetweenAccountsSeconds"]?.GetValue<int>() ?? 2, 0, 60);
+            var messageScript = presetObj["MessageScript"]?.GetValue<string>() ?? string.Empty;
+            var updatedAtUtc = ParseDateTimeOffset(presetObj["UpdatedAtUtc"]);
 
-            var list = new List<BotCheckinAssistantPreset>();
-            foreach (var pair in presetsObj)
+            var selectedAccountIds = new List<int>();
+            if (presetObj["SelectedAccountIds"] is JsonArray accountIdArray)
             {
-                var name = (pair.Key ?? string.Empty).Trim();
-                if (string.IsNullOrWhiteSpace(name) || pair.Value is not JsonObject presetObj)
-                    continue;
-
-                var botTarget = presetObj["BotTarget"]?.GetValue<string>()?.Trim() ?? string.Empty;
-                var startParameter = presetObj["StartParameter"]?.GetValue<string>()?.Trim() ?? string.Empty;
-                var autoStart = presetObj["AutoStartBeforeFirstMessage"]?.GetValue<bool>() ?? true;
-                var waitTimeoutSeconds = Math.Clamp(presetObj["WaitTimeoutSeconds"]?.GetValue<int>() ?? 25, 3, 300);
-                var delayBetweenAccountsSeconds = Math.Clamp(presetObj["DelayBetweenAccountsSeconds"]?.GetValue<int>() ?? 2, 0, 60);
-                var messageScript = presetObj["MessageScript"]?.GetValue<string>() ?? string.Empty;
-                var updatedAtUtcRaw = presetObj["UpdatedAtUtc"]?.GetValue<string>();
-                var updatedAtUtc = DateTimeOffset.TryParse(updatedAtUtcRaw, out var parsedUpdatedAtUtc)
-                    ? parsedUpdatedAtUtc
-                    : DateTimeOffset.MinValue;
-
-                var selectedAccountIds = new List<int>();
-                if (presetObj["SelectedAccountIds"] is JsonArray accountIdArray)
+                foreach (var item in accountIdArray)
                 {
-                    foreach (var item in accountIdArray)
-                    {
-                        if (item is JsonValue value && value.TryGetValue<int>(out var accountId) && accountId > 0)
-                            selectedAccountIds.Add(accountId);
-                    }
+                    if (TryGetInt(item, out var accountId) && accountId > 0)
+                        selectedAccountIds.Add(accountId);
                 }
-
-                selectedAccountIds = selectedAccountIds.Distinct().OrderBy(x => x).ToList();
-                if (string.IsNullOrWhiteSpace(botTarget) || string.IsNullOrWhiteSpace(messageScript))
-                    continue;
-
-                list.Add(new BotCheckinAssistantPreset(
-                    name,
-                    botTarget,
-                    startParameter,
-                    autoStart,
-                    waitTimeoutSeconds,
-                    delayBetweenAccountsSeconds,
-                    messageScript,
-                    selectedAccountIds,
-                    updatedAtUtc));
             }
 
-            return list
-                .OrderByDescending(x => x.UpdatedAtUtc)
-                .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            selectedAccountIds = selectedAccountIds.Distinct().OrderBy(x => x).ToList();
+            if (string.IsNullOrWhiteSpace(botTarget) || string.IsNullOrWhiteSpace(messageScript))
+                continue;
+
+            list.Add(new BotCheckinAssistantPreset(
+                name,
+                botTarget,
+                startParameter,
+                autoStart,
+                waitTimeoutSeconds,
+                delayBetweenAccountsSeconds,
+                messageScript,
+                selectedAccountIds,
+                updatedAtUtc));
         }
-        catch
-        {
-            return Array.Empty<BotCheckinAssistantPreset>();
-        }
+
+        return list
+            .OrderByDescending(x => x.UpdatedAtUtc)
+            .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     public async Task SavePresetAsync(BotCheckinAssistantPreset preset, CancellationToken cancellationToken = default)
@@ -113,16 +105,9 @@ public sealed class BotCheckinAssistantPresetStore
             .OrderBy(x => x)
             .ToList();
 
-        await _writeLock.WaitAsync(cancellationToken);
-        try
+        await UpdateRootAsync(root =>
         {
-            await EnsureConfigExistsAsync(cancellationToken);
-
-            var json = await File.ReadAllTextAsync(_configFilePath, cancellationToken);
-            var root = JsonNode.Parse(json)?.AsObject() ?? new JsonObject();
-            var section = root["BotCheckinAssistant"] as JsonObject ?? new JsonObject();
-            var presetsObj = section["Presets"] as JsonObject ?? new JsonObject();
-
+            var presetsObj = GetOrCreateSection(root, PresetsSectionName);
             var accountIdArray = new JsonArray();
             foreach (var accountId in accountIds)
                 accountIdArray.Add(accountId);
@@ -138,16 +123,7 @@ public sealed class BotCheckinAssistantPresetStore
                 ["SelectedAccountIds"] = accountIdArray,
                 ["UpdatedAtUtc"] = preset.UpdatedAtUtc
             };
-
-            section["Presets"] = presetsObj;
-            root["BotCheckinAssistant"] = section;
-
-            await WriteJsonAtomicallyAsync(ToIndentedJson(root), cancellationToken);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
+        }, cancellationToken);
     }
 
     public async Task DeletePresetAsync(string name, CancellationToken cancellationToken = default)
@@ -156,27 +132,196 @@ public sealed class BotCheckinAssistantPresetStore
         if (string.IsNullOrWhiteSpace(name))
             return;
 
-        await _writeLock.WaitAsync(cancellationToken);
+        await UpdateRootAsync(root =>
+        {
+            if (GetSection(root, PresetsSectionName) is JsonObject presetsObj)
+                presetsObj.Remove(name);
+        }, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<BotCommandHistoryItem>> GetRecentCommandsAsync(int limit = 20, CancellationToken cancellationToken = default)
+    {
+        if (limit <= 0)
+            limit = 20;
+
+        var root = await LoadRootAsync(cancellationToken);
+        if (GetSection(root, RecentCommandsSectionName) is not JsonObject commandsObj)
+            return Array.Empty<BotCommandHistoryItem>();
+
+        var list = new List<BotCommandHistoryItem>();
+        foreach (var pair in commandsObj)
+        {
+            var command = (pair.Key ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(command))
+                continue;
+
+            var updatedAtUtc = ParseDateTimeOffset(pair.Value);
+            list.Add(new BotCommandHistoryItem(command, updatedAtUtc));
+        }
+
+        return list
+            .OrderByDescending(x => x.UpdatedAtUtc)
+            .ThenBy(x => x.Command, StringComparer.OrdinalIgnoreCase)
+            .Take(limit)
+            .ToList();
+    }
+
+    public async Task RememberCommandsAsync(IEnumerable<string> commands, CancellationToken cancellationToken = default)
+    {
+        var normalized = (commands ?? Array.Empty<string>())
+            .Select(x => (x ?? string.Empty).Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (normalized.Count == 0)
+            return;
+
+        await UpdateRootAsync(root =>
+        {
+            var commandsObj = GetOrCreateSection(root, RecentCommandsSectionName);
+            var now = DateTimeOffset.UtcNow;
+            foreach (var command in normalized)
+                commandsObj[command] = now;
+        }, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<int>> GetRememberedBotAccountIdsAsync(string botTarget, CancellationToken cancellationToken = default)
+    {
+        var key = NormalizeBotKey(botTarget);
+        if (key.Length == 0)
+            return Array.Empty<int>();
+
+        var root = await LoadRootAsync(cancellationToken);
+        if (GetSection(root, BotUsageSectionName) is not JsonObject usageObj
+            || usageObj[key] is not JsonArray accountArray)
+            return Array.Empty<int>();
+
+        return accountArray
+            .Select(x => TryGetInt(x, out var id) ? id : 0)
+            .Where(x => x > 0)
+            .Distinct()
+            .OrderBy(x => x)
+            .ToList();
+    }
+
+    public async Task RememberBotAccountUsageAsync(string botTarget, IEnumerable<int> accountIds, CancellationToken cancellationToken = default)
+    {
+        var key = NormalizeBotKey(botTarget);
+        if (key.Length == 0)
+            return;
+
+        var ids = (accountIds ?? Array.Empty<int>())
+            .Where(x => x > 0)
+            .Distinct()
+            .OrderBy(x => x)
+            .ToList();
+
+        if (ids.Count == 0)
+            return;
+
+        await UpdateRootAsync(root =>
+        {
+            var usageObj = GetOrCreateSection(root, BotUsageSectionName);
+            var merged = new SortedSet<int>(ids);
+            if (usageObj[key] is JsonArray existingArray)
+            {
+                foreach (var item in existingArray)
+                {
+                    if (TryGetInt(item, out var existingId) && existingId > 0)
+                        merged.Add(existingId);
+                }
+            }
+
+            var array = new JsonArray();
+            foreach (var id in merged)
+                array.Add(id);
+
+            usageObj[key] = array;
+        }, cancellationToken);
+    }
+
+    public static string NormalizeBotKey(string? raw)
+    {
+        var value = (raw ?? string.Empty).Trim();
+        if (value.Length == 0)
+            return string.Empty;
+
+        if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
+        {
+            if (string.Equals(uri.Host, "t.me", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(uri.Host, "telegram.me", StringComparison.OrdinalIgnoreCase))
+            {
+                var path = uri.AbsolutePath.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+                if (!string.IsNullOrWhiteSpace(path))
+                    value = path;
+            }
+        }
+
+        if (value.StartsWith("tg://resolve", StringComparison.OrdinalIgnoreCase))
+        {
+            var marker = "domain=";
+            var index = value.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (index >= 0)
+            {
+                var domain = value[(index + marker.Length)..];
+                var ampIndex = domain.IndexOf('&');
+                if (ampIndex >= 0)
+                    domain = domain[..ampIndex];
+                value = domain;
+            }
+        }
+
+        return value.Trim().TrimStart('@').Trim('/').ToLowerInvariant();
+    }
+
+    private async Task<JsonObject> LoadRootAsync(CancellationToken cancellationToken)
+    {
         try
         {
             if (!File.Exists(_configFilePath))
-                return;
+                return new JsonObject();
 
             var json = await File.ReadAllTextAsync(_configFilePath, cancellationToken);
-            var root = JsonNode.Parse(json)?.AsObject();
-            if (root?["BotCheckinAssistant"] is not JsonObject section
-                || section["Presets"] is not JsonObject presetsObj
-                || !presetsObj.Remove(name))
-                return;
+            return JsonNode.Parse(json)?.AsObject() ?? new JsonObject();
+        }
+        catch
+        {
+            return new JsonObject();
+        }
+    }
 
-            section["Presets"] = presetsObj;
-            root["BotCheckinAssistant"] = section;
+    private async Task UpdateRootAsync(Action<JsonObject> update, CancellationToken cancellationToken)
+    {
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            await EnsureConfigExistsAsync(cancellationToken);
+            var root = await LoadRootAsync(cancellationToken);
+            update(root);
             await WriteJsonAtomicallyAsync(ToIndentedJson(root), cancellationToken);
         }
         finally
         {
             _writeLock.Release();
         }
+    }
+
+    private static JsonObject GetOrCreateSection(JsonObject root, string sectionName)
+    {
+        var moduleRoot = root[RootSectionName] as JsonObject ?? new JsonObject();
+        root[RootSectionName] = moduleRoot;
+
+        var section = moduleRoot[sectionName] as JsonObject ?? new JsonObject();
+        moduleRoot[sectionName] = section;
+        return section;
+    }
+
+    private static JsonObject? GetSection(JsonObject root, string sectionName)
+    {
+        return root[RootSectionName] as JsonObject is { } moduleRoot
+            ? moduleRoot[sectionName] as JsonObject
+            : null;
     }
 
     private async Task EnsureConfigExistsAsync(CancellationToken cancellationToken)
@@ -200,6 +345,26 @@ public sealed class BotCheckinAssistantPresetStore
         var tempPath = $"{_configFilePath}.tmp";
         await File.WriteAllTextAsync(tempPath, json, new UTF8Encoding(false), cancellationToken);
         File.Move(tempPath, _configFilePath, overwrite: true);
+    }
+
+    private static bool TryGetInt(JsonNode? node, out int value)
+    {
+        value = 0;
+        return node is JsonValue jsonValue && (jsonValue.TryGetValue(out value) || (jsonValue.TryGetValue(out string? raw) && int.TryParse(raw, out value)));
+    }
+
+    private static DateTimeOffset ParseDateTimeOffset(JsonNode? node)
+    {
+        if (node is JsonValue value)
+        {
+            if (value.TryGetValue(out string? raw) && DateTimeOffset.TryParse(raw, out var parsed))
+                return parsed;
+
+            if (value.TryGetValue(out DateTimeOffset dto))
+                return dto;
+        }
+
+        return DateTimeOffset.MinValue;
     }
 
     private static string ToIndentedJson(JsonNode node)
