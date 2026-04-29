@@ -558,6 +558,16 @@
     private const string TextViewFull = "\u67E5\u770B\u5168\u6587";
     private const string TextReadStateFullyCleared = "\u672A\u8BFB\u72B6\u6001\u5DF2\u6E05\u9664";
     private const string TextReadStateNotChecked = "\u672A\u6267\u884C\u672A\u8BFB\u68C0\u67E5";
+    private const string TextReadDiagDialogUnread = "\u5BF9\u8BDD\u672A\u8BFB";
+    private const string TextReadDiagMentionUnread = "\u63D0\u53CA\u672A\u8BFB";
+    private const string TextReadDiagTopMessage = "\u9876\u90E8\u6D88\u606F";
+    private const string TextReadDiagReadInbox = "\u5DF2\u8BFB\u81F3";
+    private const string TextReadDiagDialogNotFound = "\u672A\u5B9A\u4F4D\u5230\u5BF9\u8BDD\u72B6\u6001";
+    private const string TextReadDiagRecentUnread = "\u6700\u8FD1\u672A\u8BFB";
+    private const string TextReadDiagMediaUnread = "\u5A92\u4F53\u672A\u8BFB";
+    private const string TextReadDiagRecentMention = "\u6700\u8FD1\u63D0\u53CA";
+    private const string TextReadDiagMessageIds = "\u6D88\u606FID";
+    private const string TextReadDiagUnknown = "\u4ECD\u6709\u672A\u8BFB\uFF0C\u4F46\u6682\u672A\u5B9A\u4F4D\u5230\u5177\u4F53\u7C7B\u578B";
     private const string TextHistoryTitle = "\u6267\u884C\u5386\u53F2";
     private const string TextHistoryTime = "\u65F6\u95F4";
     private const string TextHistoryStep = "\u811A\u672C\u884C";
@@ -1498,30 +1508,30 @@
         if (snapshot.DialogFound)
         {
             if (snapshot.DialogUnreadCount > 0)
-                parts.Add($"对话未读 {snapshot.DialogUnreadCount}");
+                parts.Add($"{TextReadDiagDialogUnread} {snapshot.DialogUnreadCount}");
             if (snapshot.DialogUnreadMentions > 0)
-                parts.Add($"提及未读 {snapshot.DialogUnreadMentions}");
+                parts.Add($"{TextReadDiagMentionUnread} {snapshot.DialogUnreadMentions}");
             if (snapshot.DialogTopMessageId > 0)
-                parts.Add($"顶部消息 {snapshot.DialogTopMessageId}");
+                parts.Add($"{TextReadDiagTopMessage} {snapshot.DialogTopMessageId}");
             if (snapshot.DialogReadInboxMaxId > 0)
-                parts.Add($"已读至 {snapshot.DialogReadInboxMaxId}");
+                parts.Add($"{TextReadDiagReadInbox} {snapshot.DialogReadInboxMaxId}");
         }
         else
         {
-            parts.Add("未定位到对话状态");
+            parts.Add(TextReadDiagDialogNotFound);
         }
 
         if (snapshot.RecentUnreadCount > 0)
-            parts.Add($"最近未读 {snapshot.RecentUnreadCount}");
+            parts.Add($"{TextReadDiagRecentUnread} {snapshot.RecentUnreadCount}");
         if (snapshot.RecentUnreadMediaCount > 0)
-            parts.Add($"媒体未读 {snapshot.RecentUnreadMediaCount}");
+            parts.Add($"{TextReadDiagMediaUnread} {snapshot.RecentUnreadMediaCount}");
         if (snapshot.RecentMentionCount > 0)
-            parts.Add($"最近提及 {snapshot.RecentMentionCount}");
+            parts.Add($"{TextReadDiagRecentMention} {snapshot.RecentMentionCount}");
         if (snapshot.RecentUnreadMessageIds.Count > 0)
-            parts.Add($"消息ID {string.Join(",", snapshot.RecentUnreadMessageIds)}");
+            parts.Add($"{TextReadDiagMessageIds} {string.Join(",", snapshot.RecentUnreadMessageIds)}");
 
         if (parts.Count == 0)
-            parts.Add("仍有未读，但暂未定位到具体类型");
+            parts.Add(TextReadDiagUnknown);
 
         return string.Join(" | ", parts);
     }

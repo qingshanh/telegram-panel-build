@@ -574,7 +574,8 @@ public sealed class BotCheckinTelegramCompatService
             var latestMessageId = await TryGetLatestMessageIdAsync(client, target, cancellationToken);
             readUpToMessageId = Math.Max(readUpToMessageId, latestMessageId);
 
-            var readHistoryInvoked = await TryReadHistoryAsync(client, target, readUpToMessageId, cancellationToken);
+            var readHistoryInvoked = await TryReadHistoryHelperAsync(client, target, cancellationToken)
+                                     || await TryReadHistoryAsync(client, target, readUpToMessageId, cancellationToken);
             var readMentionsInvoked = await TryReadMentionsAsync(client, target, cancellationToken);
             var readReactionsInvoked = await TryReadReactionsAsync(client, target, cancellationToken);
             var readContentsInvoked = await TryReadUnreadContentsAsync(client, target, cancellationToken);
@@ -588,6 +589,27 @@ public sealed class BotCheckinTelegramCompatService
         }
 
         return invokedAny && await IsChatMarkedAsReadAsync(client, target, readUpToMessageId, cancellationToken);
+    }
+
+    private static async Task<bool> TryReadHistoryHelperAsync(
+        Client client,
+        AccountTelegramToolsService.ResolvedChatTarget target,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await client.ReadHistory(target.Peer);
+            return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static async Task<bool> TryReadHistoryAsync(
