@@ -267,7 +267,9 @@ public sealed class BotCheckinModuleTaskHandler : IModuleTaskHandler
 
         result.ReplyCaptured = true;
         result.MarkedAsRead = wait.MarkedAsRead;
-        result.ReplyPreview = wait.Candidate.Text ?? wait.Candidate.Caption ?? string.Empty;
+        result.ReplyPreview = !string.IsNullOrWhiteSpace(wait.Candidate.Text)
+            ? wait.Candidate.Text.Trim()
+            : (wait.Candidate.ImageJpegBytes is { Length: > 0 } ? "[image]" : string.Empty);
         return result;
     }
 
