@@ -1,0 +1,383 @@
+@namespace TelegramPanel.Module.BotCheckinAssistant.Components
+@inject AccountManagementService AccountManagement
+@inject BotCheckinAssistantPresetStore PresetStore
+@using TelegramPanel.Modules
+
+<MudStack Spacing="2">
+    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
+        @TextIntro
+    </MudAlert>
+
+    @if (loading)
+    {
+        <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+            <MudText Typo="Typo.body2">@TextLoading</MudText>
+        </MudStack>
+    }
+    else
+    {
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudSelect T="string"
+                           Value="@selectedPresetName"
+                           ValueChanged="ApplyPresetSelectionAsync"
+                           Label="@TextPresetLabel"
+                           Variant="Variant.Outlined"
+                           Dense="true">
+                    <MudSelectItem T="string" Value="@string.Empty">@TextPresetNone</MudSelectItem>
+                    @foreach (var preset in presets)
+                    {
+                        <MudSelectItem T="string" Value="@preset.Name">@preset.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="taskName"
+                              @bind-Value:after="PublishDraftAsync"
+                              Label="@TextTaskNameLabel"
+                              Variant="Variant.Outlined"
+                              Dense="true"
+                              Placeholder="@TextTaskNamePlaceholder" />
+            </MudItem>
+        </MudGrid>
+
+        <MudTextField @bind-Value="botTarget"
+                      @bind-Value:after="PublishDraftAsync"
+                      Label="@TextBotTargetLabel"
+                      Variant="Variant.Outlined"
+                      Dense="true"
+                      Placeholder="@TextBotTargetPlaceholder" />
+
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="startParameter"
+                              @bind-Value:after="PublishDraftAsync"
+                              Label="@TextStartParameterLabel"
+                              Variant="Variant.Outlined"
+                              Dense="true" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudNumericField T="int"
+                                 @bind-Value="waitTimeoutSeconds"
+                                 @bind-Value:after="PublishDraftAsync"
+                                 Label="@TextWaitReplyLabel"
+                                 Variant="Variant.Outlined"
+                                 Dense="true"
+                                 Min="3"
+                                 Max="300" />
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudNumericField T="int"
+                                 @bind-Value="delayBetweenAccountsSeconds"
+                                 @bind-Value:after="PublishDraftAsync"
+                                 Label="@TextDelayLabel"
+                                 Variant="Variant.Outlined"
+                                 Dense="true"
+                                 Min="0"
+                                 Max="600" />
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid>
+            <MudItem xs="12" md="4">
+                <MudSwitch @bind-Value="autoStartBeforeFirstMessage"
+                           @bind-Value:after="PublishDraftAsync"
+                           Label="@TextAutoStart" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudSwitch @bind-Value="markRepliesAsRead"
+                           @bind-Value:after="PublishDraftAsync"
+                           Label="@TextMarkRead" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudSwitch @bind-Value="enableRandomDelay"
+                           @bind-Value:after="PublishDraftAsync"
+                           Label="@TextRandomDelay" />
+            </MudItem>
+        </MudGrid>
+
+        @if (enableRandomDelay)
+        {
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudNumericField T="int"
+                                     @bind-Value="randomDelayMinSeconds"
+                                     @bind-Value:after="PublishDraftAsync"
+                                     Label="@TextRandomDelayMin"
+                                     Variant="Variant.Outlined"
+                                     Dense="true"
+                                     Min="0"
+                                     Max="600" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudNumericField T="int"
+                                     @bind-Value="randomDelayMaxSeconds"
+                                     @bind-Value:after="PublishDraftAsync"
+                                     Label="@TextRandomDelayMax"
+                                     Variant="Variant.Outlined"
+                                     Dense="true"
+                                     Min="0"
+                                     Max="600" />
+                </MudItem>
+            </MudGrid>
+        }
+
+        <MudAlert Severity="Severity.Info" Variant="Variant.Text" Dense="true">
+            @TextContinuousHint
+        </MudAlert>
+
+        <MudTextField @bind-Value="messageScript"
+                      @bind-Value:after="PublishDraftAsync"
+                      Label="@TextScriptLabel"
+                      Variant="Variant.Outlined"
+                      Lines="6"
+                      Immediate="true"
+                      HelperText="@TextScriptHelper" />
+
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h6">@TextAccountList</MudText>
+            <MudChip T="string" Color="Color.Primary" Size="Size.Small">@string.Format(TextSelectedCount, selectedAccountIds.Count, accounts.Count)</MudChip>
+            <MudSpacer />
+            <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="SelectAllFilteredAsync">@TextSelectFiltered</MudButton>
+            <MudButton Variant="Variant.Text" Color="Color.Secondary" OnClick="ClearSelectionAsync">@TextClearSelection</MudButton>
+        </MudStack>
+
+        <MudTextField @bind-Value="accountSearch"
+                      @bind-Value:after="PublishDraftAsync"
+                      Label="@TextSearchAccountLabel"
+                      Variant="Variant.Outlined"
+                      Dense="true"
+                      Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.Search"
+                      Placeholder="@TextSearchAccountPlaceholder" />
+
+        <MudTable Items="@FilteredAccounts" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
+            <HeaderContent>
+                <MudTh>@TextChoose</MudTh>
+                <MudTh>ID</MudTh>
+                <MudTh>@TextAccount</MudTh>
+                <MudTh>@TextDisplay</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="@TextChoose">
+                    <MudButton Variant="Variant.Outlined"
+                               Size="Size.Small"
+                               Color="@(selectedAccountIds.Contains(context.Id) ? Color.Success : Color.Default)"
+                               OnClick="@(() => ToggleAccountSelectionAsync(context.Id))">
+                        @(selectedAccountIds.Contains(context.Id) ? TextSelected : TextChoose)
+                    </MudButton>
+                </MudTd>
+                <MudTd DataLabel="ID">@context.Id</MudTd>
+                <MudTd DataLabel="@TextAccount">@BuildAccountLabel(context)</MudTd>
+                <MudTd DataLabel="@TextDisplay">@DisplayName(context)</MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>@TextNoAccounts</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    }
+</MudStack>
+
+@code {
+    [Parameter] public ModuleTaskDraft Draft { get; set; }
+    [Parameter] public EventCallback<ModuleTaskDraft> DraftChanged { get; set; }
+    [Parameter] public string? InitialConfigJson { get; set; }
+    [Parameter] public int? TaskId { get; set; }
+
+    private const string TextIntro = "\u4E00\u6761\u4EFB\u52A1\u5BF9\u5E94\u4E00\u4E2A\u673A\u5668\u4EBA\u7B7E\u5230\u65B9\u6848\u3002\u9002\u5408\u628A\u4E0D\u540C\u673A\u5668\u4EBA\u5206\u522B\u4FDD\u5B58\u4E3A\u72EC\u7ACB\u8BA1\u5212\u4EFB\u52A1\uFF0C\u5E76\u8BBE\u7F6E\u5404\u81EA\u7684 Cron \u65F6\u95F4\u3002";
+    private const string TextLoading = "\u6B63\u5728\u52A0\u8F7D\u8D26\u53F7\u4E0E\u9884\u8BBE...";
+    private const string TextPresetLabel = "\u4ECE\u5DF2\u4FDD\u5B58\u8BB0\u5F55\u8F7D\u5165";
+    private const string TextPresetNone = "\u4E0D\u4F7F\u7528\u8BB0\u5F55";
+    private const string TextTaskNameLabel = "\u4EFB\u52A1\u540D\u79F0\uFF08\u53EF\u9009\uFF09";
+    private const string TextTaskNamePlaceholder = "\u4F8B\u5982\uFF1A\u67D0\u673A\u5668\u4EBA\u6BCF\u65E5\u7B7E\u5230";
+    private const string TextBotTargetLabel = "\u673A\u5668\u4EBA\u7528\u6237\u540D\u6216\u94FE\u63A5";
+    private const string TextBotTargetPlaceholder = "@examplebot \u6216 https://t.me/examplebot";
+    private const string TextStartParameterLabel = "/start \u53C2\u6570\uFF08\u53EF\u9009\uFF09";
+    private const string TextWaitReplyLabel = "\u7B49\u5F85\u56DE\u590D\u8D85\u65F6\uFF08\u79D2\uFF09";
+    private const string TextDelayLabel = "\u8D26\u53F7\u95F4\u9694\uFF08\u79D2\uFF09";
+    private const string TextAutoStart = "\u9996\u6761\u811A\u672C\u524D\u81EA\u52A8\u53D1\u9001 /start";
+    private const string TextMarkRead = "\u6355\u83B7\u56DE\u590D\u540E\u81EA\u52A8\u5DF2\u8BFB";
+    private const string TextRandomDelay = "\u542F\u7528\u968F\u673A\u8D26\u53F7\u5EF6\u8FDF";
+    private const string TextRandomDelayMin = "\u968F\u673A\u5EF6\u8FDF\u6700\u5C0F\u503C\uFF08\u79D2\uFF09";
+    private const string TextRandomDelayMax = "\u968F\u673A\u5EF6\u8FDF\u6700\u5927\u503C\uFF08\u79D2\uFF09";
+    private const string TextContinuousHint = "\u4EFB\u52A1\u4E2D\u5FC3\u91CC\u7684\u8BE5\u4EFB\u52A1\u9ED8\u8BA4\u4F1A\u8FDE\u7EED\u6267\u884C\u5B8C\u6574\u5957\u811A\u672C\uFF0C\u4E0D\u4F1A\u50CF\u9875\u9762\u624B\u52A8\u6A21\u5F0F\u90A3\u6837\u505C\u5728\u6BCF\u4E00\u6761\u6D88\u606F\u540E\u7B49\u5F85\u786E\u8BA4\u3002";
+    private const string TextScriptLabel = "\u6D88\u606F\u811A\u672C\uFF08\u6BCF\u884C\u4E00\u6761\uFF09";
+    private const string TextScriptHelper = "\u8BA1\u5212\u4EFB\u52A1\u4F1A\u6309\u987A\u5E8F\u6267\u884C\u8FD9\u91CC\u7684\u6BCF\u4E00\u6761\u6D88\u606F\u3002";
+    private const string TextAccountList = "\u6267\u884C\u8D26\u53F7";
+    private const string TextSelectedCount = "\u5DF2\u9009 {0} / {1}";
+    private const string TextSelectFiltered = "\u9009\u62E9\u5F53\u524D\u7B5B\u9009";
+    private const string TextClearSelection = "\u6E05\u7A7A\u9009\u62E9";
+    private const string TextSearchAccountLabel = "\u641C\u7D22\u8D26\u53F7";
+    private const string TextSearchAccountPlaceholder = "\u624B\u673A\u53F7 / \u7528\u6237\u540D / \u6635\u79F0 / \u5907\u6CE8";
+    private const string TextChoose = "\u9009\u62E9";
+    private const string TextSelected = "\u5DF2\u9009\u4E2D";
+    private const string TextAccount = "\u8D26\u53F7";
+    private const string TextDisplay = "\u663E\u793A\u4FE1\u606F";
+    private const string TextNoAccounts = "\u6CA1\u6709\u5339\u914D\u5230\u8D26\u53F7\u3002";
+
+    private bool loading = true;
+    private string selectedPresetName = string.Empty;
+    private string taskName = string.Empty;
+    private string botTarget = string.Empty;
+    private string startParameter = string.Empty;
+    private bool autoStartBeforeFirstMessage = true;
+    private int waitTimeoutSeconds = 25;
+    private int delayBetweenAccountsSeconds = 2;
+    private bool enableRandomDelay;
+    private int randomDelayMinSeconds;
+    private int randomDelayMaxSeconds;
+    private bool markRepliesAsRead = true;
+    private string messageScript = string.Empty;
+    private string accountSearch = string.Empty;
+
+    private List<Account> accounts = new();
+    private List<BotCheckinAssistantPreset> presets = new();
+    private readonly HashSet<int> selectedAccountIds = new();
+
+    private IEnumerable<Account> FilteredAccounts => accounts.Where(MatchesAccountFilter).OrderBy(x => x.Id);
+
+    protected override async Task OnInitializedAsync()
+    {
+        accounts = (await AccountManagement.GetActiveAccountsAsync()).OrderBy(x => x.Id).ToList();
+        presets = (await PresetStore.GetPresetsAsync()).ToList();
+
+        if (!string.IsNullOrWhiteSpace(InitialConfigJson))
+            ApplyConfig(BotCheckinTaskConfig.Deserialize(InitialConfigJson));
+
+        loading = false;
+        await PublishDraftAsync();
+    }
+
+    private async Task ApplyPresetSelectionAsync(string presetNameValue)
+    {
+        selectedPresetName = presetNameValue ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(selectedPresetName))
+        {
+            await PublishDraftAsync();
+            return;
+        }
+
+        var preset = presets.FirstOrDefault(x => string.Equals(x.Name, selectedPresetName, StringComparison.OrdinalIgnoreCase));
+        if (preset != null)
+            ApplyConfig(BotCheckinTaskConfig.FromPreset(preset));
+
+        await PublishDraftAsync();
+    }
+
+    private async Task ToggleAccountSelectionAsync(int accountId)
+    {
+        if (selectedAccountIds.Contains(accountId))
+            selectedAccountIds.Remove(accountId);
+        else
+            selectedAccountIds.Add(accountId);
+
+        await PublishDraftAsync();
+    }
+
+    private async Task SelectAllFilteredAsync()
+    {
+        foreach (var account in FilteredAccounts)
+            selectedAccountIds.Add(account.Id);
+
+        await PublishDraftAsync();
+    }
+
+    private async Task ClearSelectionAsync()
+    {
+        selectedAccountIds.Clear();
+        await PublishDraftAsync();
+    }
+
+    private async Task PublishDraftAsync()
+    {
+        if (loading)
+            return;
+
+        var config = BuildConfig();
+        var validationError = config.Validate();
+        var total = config.GetTotalOperations();
+        var canSubmit = string.IsNullOrWhiteSpace(validationError);
+        var draft = new ModuleTaskDraft(total, canSubmit ? config.Serialize() : null, canSubmit, validationError)
+        {
+            SubmissionMode = "scheduled"
+        };
+
+        Draft = draft;
+        await DraftChanged.InvokeAsync(draft);
+    }
+
+    private BotCheckinTaskConfig BuildConfig()
+    {
+        return new BotCheckinTaskConfig
+        {
+            TaskName = taskName,
+            BotTarget = botTarget,
+            StartParameter = startParameter,
+            AutoStartBeforeFirstMessage = autoStartBeforeFirstMessage,
+            WaitTimeoutSeconds = waitTimeoutSeconds,
+            DelayBetweenAccountsSeconds = delayBetweenAccountsSeconds,
+            EnableRandomDelay = enableRandomDelay,
+            RandomDelayMinSeconds = randomDelayMinSeconds,
+            RandomDelayMaxSeconds = randomDelayMaxSeconds,
+            AutoContinueAllSteps = true,
+            MarkRepliesAsRead = markRepliesAsRead,
+            MessageScript = messageScript,
+            SelectedAccountIds = selectedAccountIds.OrderBy(x => x).ToList()
+        };
+    }
+
+    private void ApplyConfig(BotCheckinTaskConfig config)
+    {
+        config.Normalize();
+        taskName = config.TaskName;
+        botTarget = config.BotTarget;
+        startParameter = config.StartParameter;
+        autoStartBeforeFirstMessage = config.AutoStartBeforeFirstMessage;
+        waitTimeoutSeconds = config.WaitTimeoutSeconds;
+        delayBetweenAccountsSeconds = config.DelayBetweenAccountsSeconds;
+        enableRandomDelay = config.EnableRandomDelay;
+        randomDelayMinSeconds = config.RandomDelayMinSeconds;
+        randomDelayMaxSeconds = config.RandomDelayMaxSeconds;
+        markRepliesAsRead = config.MarkRepliesAsRead;
+        messageScript = config.MessageScript;
+
+        selectedAccountIds.Clear();
+        foreach (var accountId in config.SelectedAccountIds.Where(x => accounts.Any(a => a.Id == x)))
+            selectedAccountIds.Add(accountId);
+    }
+
+    private bool MatchesAccountFilter(Account account)
+    {
+        var keyword = (accountSearch ?? string.Empty).Trim();
+        if (keyword.Length == 0)
+            return true;
+
+        return (account.DisplayPhone ?? string.Empty).Contains(keyword, StringComparison.OrdinalIgnoreCase)
+               || (account.Username ?? string.Empty).Contains(keyword, StringComparison.OrdinalIgnoreCase)
+               || (account.Nickname ?? string.Empty).Contains(keyword, StringComparison.OrdinalIgnoreCase)
+               || (account.Remark ?? string.Empty).Contains(keyword, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildAccountLabel(Account account)
+    {
+        if (!string.IsNullOrWhiteSpace(account.Username))
+            return $"#{account.Id} @{account.Username}";
+
+        if (!string.IsNullOrWhiteSpace(account.DisplayPhone))
+            return $"#{account.Id} {account.DisplayPhone}";
+
+        return $"#{account.Id}";
+    }
+
+    private static string DisplayName(Account account)
+    {
+        if (!string.IsNullOrWhiteSpace(account.Nickname) && !string.IsNullOrWhiteSpace(account.Remark))
+            return $"{account.Nickname} / {account.Remark}";
+        if (!string.IsNullOrWhiteSpace(account.Nickname))
+            return account.Nickname;
+        if (!string.IsNullOrWhiteSpace(account.Remark))
+            return account.Remark;
+        return "-";
+    }
+}

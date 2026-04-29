@@ -14,6 +14,11 @@ public sealed record BotCheckinAssistantPreset(
     bool AutoStartBeforeFirstMessage,
     int WaitTimeoutSeconds,
     int DelayBetweenAccountsSeconds,
+    bool EnableRandomDelay,
+    int RandomDelayMinSeconds,
+    int RandomDelayMaxSeconds,
+    bool AutoContinueAllSteps,
+    bool MarkRepliesAsRead,
     string MessageScript,
     IReadOnlyList<int> SelectedAccountIds,
     DateTimeOffset UpdatedAtUtc);
@@ -58,7 +63,12 @@ public sealed class BotCheckinAssistantPresetStore
             var startParameter = presetObj["StartParameter"]?.GetValue<string>()?.Trim() ?? string.Empty;
             var autoStart = presetObj["AutoStartBeforeFirstMessage"]?.GetValue<bool>() ?? true;
             var waitTimeoutSeconds = Math.Clamp(presetObj["WaitTimeoutSeconds"]?.GetValue<int>() ?? 25, 3, 300);
-            var delayBetweenAccountsSeconds = Math.Clamp(presetObj["DelayBetweenAccountsSeconds"]?.GetValue<int>() ?? 2, 0, 60);
+            var delayBetweenAccountsSeconds = Math.Clamp(presetObj["DelayBetweenAccountsSeconds"]?.GetValue<int>() ?? 2, 0, 600);
+            var enableRandomDelay = presetObj["EnableRandomDelay"]?.GetValue<bool>() ?? false;
+            var randomDelayMinSeconds = Math.Clamp(presetObj["RandomDelayMinSeconds"]?.GetValue<int>() ?? 0, 0, 600);
+            var randomDelayMaxSeconds = Math.Clamp(presetObj["RandomDelayMaxSeconds"]?.GetValue<int>() ?? 0, 0, 600);
+            var autoContinueAllSteps = presetObj["AutoContinueAllSteps"]?.GetValue<bool>() ?? false;
+            var markRepliesAsRead = presetObj["MarkRepliesAsRead"]?.GetValue<bool>() ?? true;
             var messageScript = presetObj["MessageScript"]?.GetValue<string>() ?? string.Empty;
             var updatedAtUtc = ParseDateTimeOffset(presetObj["UpdatedAtUtc"]);
 
@@ -83,6 +93,11 @@ public sealed class BotCheckinAssistantPresetStore
                 autoStart,
                 waitTimeoutSeconds,
                 delayBetweenAccountsSeconds,
+                enableRandomDelay,
+                randomDelayMinSeconds,
+                randomDelayMaxSeconds,
+                autoContinueAllSteps,
+                markRepliesAsRead,
                 messageScript,
                 selectedAccountIds,
                 updatedAtUtc));
@@ -98,7 +113,7 @@ public sealed class BotCheckinAssistantPresetStore
     {
         var name = (preset.Name ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(name))
-            throw new ArgumentException("记录名称不能为空", nameof(preset));
+            throw new ArgumentException("Preset name cannot be empty.", nameof(preset));
 
         var accountIds = (preset.SelectedAccountIds ?? Array.Empty<int>())
             .Where(x => x > 0)
@@ -119,7 +134,12 @@ public sealed class BotCheckinAssistantPresetStore
                 ["StartParameter"] = preset.StartParameter,
                 ["AutoStartBeforeFirstMessage"] = preset.AutoStartBeforeFirstMessage,
                 ["WaitTimeoutSeconds"] = Math.Clamp(preset.WaitTimeoutSeconds, 3, 300),
-                ["DelayBetweenAccountsSeconds"] = Math.Clamp(preset.DelayBetweenAccountsSeconds, 0, 60),
+                ["DelayBetweenAccountsSeconds"] = Math.Clamp(preset.DelayBetweenAccountsSeconds, 0, 600),
+                ["EnableRandomDelay"] = preset.EnableRandomDelay,
+                ["RandomDelayMinSeconds"] = Math.Clamp(preset.RandomDelayMinSeconds, 0, 600),
+                ["RandomDelayMaxSeconds"] = Math.Clamp(preset.RandomDelayMaxSeconds, 0, 600),
+                ["AutoContinueAllSteps"] = preset.AutoContinueAllSteps,
+                ["MarkRepliesAsRead"] = preset.MarkRepliesAsRead,
                 ["MessageScript"] = preset.MessageScript,
                 ["SelectedAccountIds"] = accountIdArray,
                 ["UpdatedAtUtc"] = preset.UpdatedAtUtc

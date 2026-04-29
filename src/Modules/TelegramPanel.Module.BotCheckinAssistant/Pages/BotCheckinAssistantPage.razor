@@ -6,14 +6,14 @@
 @inject ISnackbar Snackbar
 @inject ILogger<BotCheckinAssistantPage> Logger
 
-<PageTitle>机器人签到助手</PageTitle>
+<PageTitle>@TextTitle</PageTitle>
 
-<MudText Typo="Typo.h4" Class="mb-4 tp-page-title">机器人签到助手</MudText>
+<MudText Typo="Typo.h4" Class="mb-4 tp-page-title">@TextTitle</MudText>
 
 <MudPaper Class="pa-4" Elevation="0" Outlined="true">
     <MudStack Spacing="2">
         <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
-            适合批量给签到机器人发消息、查看回复、点回复按钮，并在看完结果后决定继续下一条还是停止。
+            @TextIntro
         </MudAlert>
 
         <MudGrid>
@@ -21,11 +21,11 @@
                 <MudSelect T="string"
                            Value="@selectedPresetName"
                            ValueChanged="ApplyPresetSelectionAsync"
-                           Label="常用记录"
+                           Label="@TextPresetLabel"
                            Variant="Variant.Outlined"
                            Disabled="@running"
-                           HelperText="可保存整套机器人、脚本和账号选择">
-                    <MudSelectItem T="string" Value="@string.Empty">不使用记录</MudSelectItem>
+                           HelperText="@TextPresetHelper">
+                    <MudSelectItem T="string" Value="@string.Empty">@TextPresetNone</MudSelectItem>
                     @foreach (var preset in presets)
                     {
                         <MudSelectItem T="string" Value="@preset.Name">@preset.Name</MudSelectItem>
@@ -34,10 +34,10 @@
             </MudItem>
             <MudItem xs="12" md="4">
                 <MudTextField @bind-Value="presetName"
-                              Label="记录名称"
+                              Label="@TextPresetNameLabel"
                               Variant="Variant.Outlined"
                               Disabled="@running"
-                              Placeholder="例如：某机器人每日签到" />
+                              Placeholder="@TextPresetNamePlaceholder" />
             </MudItem>
             <MudItem xs="12" md="3">
                 <MudStack Row="true" Spacing="1">
@@ -45,13 +45,13 @@
                                Color="Color.Primary"
                                Disabled="@running"
                                OnClick="SaveCurrentPresetAsync">
-                        保存记录
+                        @TextSavePreset
                     </MudButton>
                     <MudButton Variant="Variant.Text"
                                Color="Color.Error"
                                Disabled="@(running || string.IsNullOrWhiteSpace(selectedPresetName))"
                                OnClick="DeleteSelectedPresetAsync">
-                        删除记录
+                        @TextDeletePreset
                     </MudButton>
                 </MudStack>
             </MudItem>
@@ -59,54 +59,102 @@
 
         <MudTextField @bind-Value="botTarget"
                       @bind-Value:after="OnBotTargetChangedAsync"
-                      Label="机器人用户名或链接"
+                      Label="@TextBotTargetLabel"
                       Variant="Variant.Outlined"
-                      Placeholder="@BotTargetPlaceholder"
+                      Placeholder="@TextBotTargetPlaceholder"
                       Disabled="@running"
                       Immediate="true" />
 
         <MudGrid>
             <MudItem xs="12" md="6">
                 <MudTextField @bind-Value="startParameter"
-                              Label="/start 参数（可选）"
+                              Label="@TextStartParameterLabel"
                               Variant="Variant.Outlined"
                               Placeholder="invite_abc"
                               Disabled="@running" />
             </MudItem>
             <MudItem xs="12" md="3">
-                <MudNumericField T="int" @bind-Value="waitTimeoutSeconds"
-                                 Label="等待回复超时（秒）"
+                <MudNumericField T="int"
+                                 @bind-Value="waitTimeoutSeconds"
+                                 Label="@TextWaitReplyLabel"
                                  Variant="Variant.Outlined"
                                  Min="3"
                                  Max="300"
                                  Disabled="@running" />
             </MudItem>
             <MudItem xs="12" md="3">
-                <MudNumericField T="int" @bind-Value="delayBetweenAccountsSeconds"
-                                 Label="账号间隔（秒）"
+                <MudNumericField T="int"
+                                 @bind-Value="delayBetweenAccountsSeconds"
+                                 Label="@TextDelayLabel"
                                  Variant="Variant.Outlined"
                                  Min="0"
-                                 Max="60"
+                                 Max="600"
                                  Disabled="@running" />
             </MudItem>
         </MudGrid>
 
-        <MudSwitch @bind-Value="autoStartBeforeFirstMessage"
-                   Label="首条脚本前先发送 /start"
+        <MudGrid>
+            <MudItem xs="12" md="4">
+                <MudSwitch @bind-Value="autoStartBeforeFirstMessage"
+                           Label="@TextAutoStart"
+                           Disabled="@running" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudSwitch @bind-Value="markRepliesAsRead"
+                           Label="@TextMarkRead"
+                           Disabled="@running" />
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudSwitch @bind-Value="enableRandomDelay"
+                           Label="@TextRandomDelay"
+                           Disabled="@running" />
+            </MudItem>
+        </MudGrid>
+
+        @if (enableRandomDelay)
+        {
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudNumericField T="int"
+                                     @bind-Value="randomDelayMinSeconds"
+                                     Label="@TextRandomDelayMin"
+                                     Variant="Variant.Outlined"
+                                     Min="0"
+                                     Max="600"
+                                     Disabled="@running" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudNumericField T="int"
+                                     @bind-Value="randomDelayMaxSeconds"
+                                     Label="@TextRandomDelayMax"
+                                     Variant="Variant.Outlined"
+                                     Min="0"
+                                     Max="600"
+                                     Disabled="@running" />
+                </MudItem>
+            </MudGrid>
+        }
+
+        <MudSwitch @bind-Value="autoContinueAllSteps"
+                   Label="@TextAutoContinue"
                    Disabled="@running" />
 
+        <MudAlert Severity="Severity.Info" Variant="Variant.Text" Dense="true">
+            @ExecutionModeDescription
+        </MudAlert>
+
         <MudTextField @bind-Value="messageScript"
-                      Label="消息脚本（每行一条）"
+                      Label="@TextScriptLabel"
                       Variant="Variant.Outlined"
                       Lines="6"
                       Immediate="true"
                       Disabled="@running"
-                      HelperText="不再内置默认命令。下方会显示你用过的历史命令候选，点一下可插入。" />
+                      HelperText="@TextScriptHelper" />
 
         @if (recentCommands.Count > 0)
         {
-            <MudStack Row="true" Spacing="1">
-                <MudText Typo="Typo.body2" Class="mt-1">历史命令候选：</MudText>
+            <MudStack Row="true" Spacing="1" Wrap="Wrap.Wrap">
+                <MudText Typo="Typo.body2" Class="mt-1">@TextHistoryCommands</MudText>
                 @foreach (var command in recentCommands)
                 {
                     <MudButton Variant="Variant.Outlined"
@@ -114,7 +162,7 @@
                                Color="Color.Default"
                                Disabled="@running"
                                OnClick="@(() => AppendCommandFromHistory(command.Command))">
-                        @Shorten(command.Command, 16)
+                        @Shorten(command.Command, 18)
                     </MudButton>
                 }
             </MudStack>
@@ -123,11 +171,11 @@
         <MudDivider />
 
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-            <MudText Typo="Typo.h6">账号列表</MudText>
-            <MudChip T="string" Color="Color.Primary" Size="Size.Small">已选择 @selectedAccountIds.Count / @accounts.Count</MudChip>
+            <MudText Typo="Typo.h6">@TextAccountList</MudText>
+            <MudChip T="string" Color="Color.Primary" Size="Size.Small">@string.Format(TextSelectedCount, selectedAccountIds.Count, accounts.Count)</MudChip>
             @if (rememberedBotAccountIds.Count > 0)
             {
-                <MudChip T="string" Color="Color.Info" Size="Size.Small">已识别该机器人常用账号 @rememberedBotAccountIds.Count</MudChip>
+                <MudChip T="string" Color="Color.Info" Size="Size.Small">@string.Format(TextRememberedCount, rememberedBotAccountIds.Count)</MudChip>
             }
             <MudSpacer />
             <MudButton Variant="Variant.Outlined"
@@ -135,92 +183,92 @@
                        StartIcon="@Icons.Material.Filled.Refresh"
                        Disabled="@(running || loadingAccounts)"
                        OnClick="ReloadAccountsAsync">
-                刷新账号
+                @TextRefreshAccounts
             </MudButton>
         </MudStack>
 
         <MudTextField @bind-Value="accountSearch"
-                      Label="搜索账号"
-                      Placeholder="手机号 / 用户名 / 昵称 / 备注"
+                      Label="@TextSearchAccountLabel"
+                      Placeholder="@TextSearchAccountPlaceholder"
                       Variant="Variant.Outlined"
                       Adornment="Adornment.Start"
                       AdornmentIcon="@Icons.Material.Filled.Search"
                       Disabled="@running" />
 
-        <MudStack Row="true" Spacing="1">
+        <MudStack Row="true" Spacing="1" Wrap="Wrap.Wrap">
             <MudButton Variant="Variant.Text"
                        Color="Color.Primary"
                        Disabled="@running"
-                       OnClick="SelectAllFiltered">
-                选择当前筛选
+                       OnClick="SelectAllFilteredAsync">
+                @TextSelectFiltered
             </MudButton>
             <MudButton Variant="Variant.Text"
                        Color="Color.Secondary"
                        Disabled="@running"
-                       OnClick="ClearSelection">
-                清空选择
+                       OnClick="ClearSelectionAsync">
+                @TextClearSelection
             </MudButton>
             <MudButton Variant="Variant.Text"
                        Color="Color.Info"
                        Disabled="@(running || string.IsNullOrWhiteSpace(botTarget))"
                        OnClick="LoadRememberedBotUsageAsync">
-                读取本地常用账号
+                @TextLoadRemembered
             </MudButton>
             <MudButton Variant="Variant.Text"
                        Color="Color.Info"
                        Disabled="@(running || string.IsNullOrWhiteSpace(botTarget) || loadingBotUsage)"
                        OnClick="ScanBotUsageFromTelegramAsync">
-                扫描真实历史
+                @TextScanHistory
             </MudButton>
             <MudButton Variant="Variant.Text"
                        Color="Color.Success"
                        Disabled="@(running || rememberedBotAccountIds.Count == 0)"
-                       OnClick="SelectRememberedBotAccounts">
-                一键选择该机器人常用账号
+                       OnClick="SelectRememberedBotAccountsAsync">
+                @TextSelectRemembered
             </MudButton>
             <MudButton Variant="Variant.Text"
                        Color="@(showOnlyUsedWithBot ? Color.Warning : Color.Default)"
                        Disabled="@(running || rememberedBotAccountIds.Count == 0)"
                        OnClick="ToggleUsedBotFilter">
-                @(showOnlyUsedWithBot ? "显示全部账号" : "仅看该机器人常用账号")
+                @(showOnlyUsedWithBot ? TextShowAllAccounts : TextOnlyBotAccounts)
             </MudButton>
         </MudStack>
 
-        <MudTable Items="FilteredAccounts"
+        <MudTable Items="@FilteredAccounts"
                   Dense="true"
                   Hover="true"
                   Loading="@(loadingAccounts || loadingBotUsage)"
                   Breakpoint="Breakpoint.Sm">
             <HeaderContent>
-                <MudTh>选择</MudTh>
+                <MudTh>@TextColumnChoose</MudTh>
                 <MudTh>ID</MudTh>
-                <MudTh>手机号</MudTh>
-                <MudTh>用户名</MudTh>
-                <MudTh>昵称 / 备注</MudTh>
-                <MudTh>该机器人常用</MudTh>
+                <MudTh>@TextColumnPhone</MudTh>
+                <MudTh>@TextColumnUsername</MudTh>
+                <MudTh>@TextColumnDisplay</MudTh>
+                <MudTh>@TextColumnRemembered</MudTh>
             </HeaderContent>
             <RowTemplate>
-                <MudTd DataLabel="选择">
+                <MudTd DataLabel="@TextColumnChoose">
                     <MudButton Variant="Variant.Outlined"
                                Size="Size.Small"
                                Color="@(selectedAccountIds.Contains(context.Id) ? Color.Success : Color.Default)"
                                Disabled="@running"
                                OnClick="@(() => ToggleAccountSelectionAsync(context.Id))">
-                        @(selectedAccountIds.Contains(context.Id) ? "已选中" : "选择")
+                        @(selectedAccountIds.Contains(context.Id) ? TextSelected : TextChoose)
                     </MudButton>
                 </MudTd>
                 <MudTd DataLabel="ID">@context.Id</MudTd>
-                <MudTd DataLabel="手机号">@context.DisplayPhone</MudTd>
-                <MudTd DataLabel="用户名">@(!string.IsNullOrWhiteSpace(context.Username) ? $"@{context.Username}" : "-")</MudTd>
-                <MudTd DataLabel="昵称 / 备注">@DisplayName(context)</MudTd>
-                <MudTd DataLabel="该机器人常用">
+                <MudTd DataLabel="@TextColumnPhone">@context.DisplayPhone</MudTd>
+                <MudTd DataLabel="@TextColumnUsername">@(!string.IsNullOrWhiteSpace(context.Username) ? $"@{context.Username}" : "-")</MudTd>
+                <MudTd DataLabel="@TextColumnDisplay">@DisplayName(context)</MudTd>
+                <MudTd DataLabel="@TextColumnRemembered">
                     <MudChip T="string" Size="Size.Small" Color="@(rememberedBotAccountIds.Contains(context.Id) ? Color.Info : Color.Default)">
-                        @(rememberedBotAccountIds.Contains(context.Id) ? "是" : "-")
+                        @(rememberedBotAccountIds.Contains(context.Id) ? TextYes : "-")
                     </MudChip>
                 </MudTd>
             </RowTemplate>
             <NoRecordsContent>
-                <MudText>没有匹配到账号。</MudText>
+                <MudText>@TextNoAccounts</MudText>
             </NoRecordsContent>
         </MudTable>
 
@@ -231,86 +279,134 @@
         </MudAlert>
 
         <MudAlert Severity="Severity.Info" Variant="Variant.Text" Dense="true">
-            当前状态：@currentStatusText
+            @($"{TextCurrentStatusPrefix}{currentStatusText}")
         </MudAlert>
 
-        <MudStack Row="true" Spacing="2">
+        <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
             <MudButton Variant="Variant.Filled"
                        Color="Color.Primary"
                        StartIcon="@Icons.Material.Filled.PlayArrow"
                        Disabled="@(!CanStart)"
                        OnClick="StartWorkflowAsync">
-                开始第 1 条
+                @(autoContinueAllSteps ? TextStartContinuous : TextStartFirst)
             </MudButton>
             <MudButton Variant="Variant.Filled"
                        Color="Color.Success"
                        StartIcon="@Icons.Material.Filled.SkipNext"
                        Disabled="@(!CanContinue)"
                        OnClick="ContinueWorkflowAsync">
-                继续下一条
+                @TextContinue
             </MudButton>
             <MudButton Variant="Variant.Outlined"
                        Color="Color.Error"
                        StartIcon="@Icons.Material.Filled.Stop"
                        Disabled="@(!CanStop)"
-                       OnClick="StopWorkflow">
-                停止
+                       OnClick="StopWorkflowAsync">
+                @TextStop
             </MudButton>
             <MudButton Variant="Variant.Text"
                        Color="Color.Default"
                        StartIcon="@Icons.Material.Filled.RestartAlt"
                        Disabled="@(!CanReset)"
-                       OnClick="ResetWorkflow">
-                重置
+                       OnClick="ResetWorkflowAsync">
+                @TextReset
             </MudButton>
         </MudStack>
     </MudStack>
 </MudPaper>
 
+@if (previewRow != null)
+{
+    <MudPaper Class="pa-4 mt-4" Elevation="0" Outlined="true">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
+            <MudText Typo="Typo.h6">@($"{TextReplyPreviewTitle}{previewRow.AccountLabel}")</MudText>
+            <MudSpacer />
+            <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="ClosePreview">@TextClose</MudButton>
+        </MudStack>
+        <MudTextField Value="@previewRow.ResponseText"
+                      Label="@TextReplyFullLabel"
+                      Variant="Variant.Outlined"
+                      Lines="12"
+                      ReadOnly="true" />
+        @if (!string.IsNullOrWhiteSpace(previewRow.ResponseButtonsSummary))
+        {
+            <MudText Typo="Typo.body2" Class="mt-2">@($"{TextReplyButtonsPrefix}{previewRow.ResponseButtonsSummary}")</MudText>
+        }
+    </MudPaper>
+}
+
 @if (currentStepResults.Count > 0)
 {
     <MudPaper Class="pa-4 mt-4" Elevation="0" Outlined="true">
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
-            <MudText Typo="Typo.h6">当前轮次：第 @(Math.Max(currentStepIndex + 1, 1)) 条</MudText>
-            <MudChip T="string" Size="Size.Small" Color="Color.Success">发送成功 @currentStepResults.Count(x => x.SendSuccess)</MudChip>
-            <MudChip T="string" Size="Size.Small" Color="Color.Info">已捕获回复 @currentStepResults.Count(x => x.ResponseSuccess)</MudChip>
-            <MudChip T="string" Size="Size.Small" Color="Color.Error">异常或未回复 @currentStepResults.Count(x => !string.IsNullOrWhiteSpace(x.Error))</MudChip>
+            <MudText Typo="Typo.h6">@string.Format(TextCurrentViewTitle, CurrentViewStepNumber)</MudText>
+            <MudChip T="string" Size="Size.Small" Color="Color.Success">@string.Format(TextSendSuccessCount, currentStepResults.Count(x => x.SendSuccess))</MudChip>
+            <MudChip T="string" Size="Size.Small" Color="Color.Info">@string.Format(TextReplyCapturedCount, currentStepResults.Count(x => x.ResponseSuccess))</MudChip>
+            <MudChip T="string" Size="Size.Small" Color="Color.Error">@string.Format(TextIssueCount, currentStepResults.Count(x => HasRowIssue(x)))</MudChip>
             <MudSpacer />
             <MudButton Variant="Variant.Text"
                        Color="Color.Warning"
                        Disabled="@running"
-                       OnClick="SelectFailedAccountsFromCurrentRound">
-                选中失败账号
+                       OnClick="SelectFailedAccountsFromCurrentRoundAsync">
+                @TextSelectFailedAccounts
             </MudButton>
         </MudStack>
 
         <MudText Typo="Typo.body2" Class="mb-3 mud-text-secondary">
-            发送内容：@Shorten(workflowMessages.ElementAtOrDefault(Math.Max(currentStepIndex, 0)), 200)
+            @($"{TextCurrentScriptPrefix}{Shorten(workflowMessages.ElementAtOrDefault(Math.Max(currentStepIndex, 0)), 200)}")
         </MudText>
 
-        <MudTable Items="currentStepResults" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
+        <MudTable Items="@currentStepResults"
+                  Dense="true"
+                  Hover="true"
+                  Breakpoint="Breakpoint.Sm"
+                  Class="tp-result-table">
+            <ColGroup>
+                <col style="width: 12%;" />
+                <col style="width: 8%;" />
+                <col style="width: 9%;" />
+                <col style="width: 39%;" />
+                <col style="width: 17%;" />
+                <col style="width: 15%;" />
+            </ColGroup>
             <HeaderContent>
-                <MudTh>账号</MudTh>
-                <MudTh>发送</MudTh>
-                <MudTh>回复</MudTh>
-                <MudTh>回复内容</MudTh>
-                <MudTh>回复按钮</MudTh>
-                <MudTh>错误</MudTh>
+                <MudTh>@TextResultAccount</MudTh>
+                <MudTh>@TextResultSend</MudTh>
+                <MudTh>@TextResultReply</MudTh>
+                <MudTh>@TextResultReplyContent</MudTh>
+                <MudTh>@TextResultReplyButtons</MudTh>
+                <MudTh>@TextResultError</MudTh>
             </HeaderContent>
             <RowTemplate>
-                <MudTd DataLabel="账号">@context.AccountLabel</MudTd>
-                <MudTd DataLabel="发送">
+                <MudTd DataLabel="@TextResultAccount">@context.AccountLabel</MudTd>
+                <MudTd DataLabel="@TextResultSend">
                     <MudChip T="string" Size="Size.Small" Color="@(context.SendSuccess ? Color.Success : Color.Error)">
-                        @(context.SendSuccess ? "成功" : "失败")
+                        @(context.SendSuccess ? TextSuccess : TextFailure)
                     </MudChip>
                 </MudTd>
-                <MudTd DataLabel="回复">
+                <MudTd DataLabel="@TextResultReply">
                     <MudChip T="string" Size="Size.Small" Color="@(context.ResponseSuccess ? Color.Success : Color.Default)">
-                        @(context.ResponseSuccess ? "已捕获并已读" : "无")
+                        @(context.ResponseSuccess ? (context.MarkedAsRead ? TextReplyRead : TextReplyCaptured) : TextReplyNone)
                     </MudChip>
                 </MudTd>
-                <MudTd DataLabel="回复内容">@ToSingleLine(context.ResponseText, 120)</MudTd>
-                <MudTd DataLabel="回复按钮">
+                <MudTd DataLabel="@TextResultReplyContent" Class="tp-wrap-cell">
+                    <MudText Typo="Typo.body2">@ShortenMultiline(context.ResponseText, 220)</MudText>
+                    @if (!string.IsNullOrWhiteSpace(context.ResponseText) && context.ResponseText.Length > 220)
+                    {
+                        <MudButton Variant="Variant.Text"
+                                   Size="Size.Small"
+                                   Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.Visibility"
+                                   OnClick="@(() => ShowReplyPreview(context))">
+                            @TextViewFull
+                        </MudButton>
+                    }
+                </MudTd>
+                <MudTd DataLabel="@TextResultReplyButtons" Class="tp-wrap-cell">
+                    @if (!string.IsNullOrWhiteSpace(context.ResponseButtonsSummary))
+                    {
+                        <MudText Typo="Typo.caption" Class="mb-1">@context.ResponseButtonsSummary</MudText>
+                    }
                     @if (context.ResponseButtons.Count == 0)
                     {
                         <MudText Typo="Typo.body2">-</MudText>
@@ -330,7 +426,9 @@
                         </MudStack>
                     }
                 </MudTd>
-                <MudTd DataLabel="错误">@ToSingleLine(context.Error, 120)</MudTd>
+                <MudTd DataLabel="@TextResultError" Class="tp-wrap-cell">
+                    @ShortenMultiline(context.Error, 120)
+                </MudTd>
             </RowTemplate>
         </MudTable>
     </MudPaper>
@@ -339,31 +437,123 @@
 @if (history.Count > 0)
 {
     <MudPaper Class="pa-4 mt-4" Elevation="0" Outlined="true">
-        <MudText Typo="Typo.h6" Class="mb-2">执行历史</MudText>
-        <MudTable Items="history" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
+        <MudText Typo="Typo.h6" Class="mb-2">@TextHistoryTitle</MudText>
+        <MudTable Items="@history" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
             <HeaderContent>
-                <MudTh>时间</MudTh>
-                <MudTh>脚本行</MudTh>
-                <MudTh>消息</MudTh>
-                <MudTh>发送成功</MudTh>
-                <MudTh>捕获回复</MudTh>
+                <MudTh>@TextHistoryTime</MudTh>
+                <MudTh>@TextHistoryStep</MudTh>
+                <MudTh>@TextHistoryMessage</MudTh>
+                <MudTh>@TextHistorySend</MudTh>
+                <MudTh>@TextHistoryReply</MudTh>
             </HeaderContent>
             <RowTemplate>
-                <MudTd DataLabel="时间">@context.ExecutedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</MudTd>
-                <MudTd DataLabel="脚本行">@context.StepNumber</MudTd>
-                <MudTd DataLabel="消息">@Shorten(context.Message, 80)</MudTd>
-                <MudTd DataLabel="发送成功">@($"{context.Results.Count(x => x.SendSuccess)}/{context.Results.Count}")</MudTd>
-                <MudTd DataLabel="捕获回复">@($"{context.Results.Count(x => x.ResponseSuccess)}/{context.Results.Count}")</MudTd>
+                <MudTd DataLabel="@TextHistoryTime">@context.ExecutedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</MudTd>
+                <MudTd DataLabel="@TextHistoryStep">@context.StepNumber</MudTd>
+                <MudTd DataLabel="@TextHistoryMessage">@Shorten(context.Message, 80)</MudTd>
+                <MudTd DataLabel="@TextHistorySend">@($"{context.Results.Count(x => x.SendSuccess)}/{context.Results.Count}")</MudTd>
+                <MudTd DataLabel="@TextHistoryReply">@($"{context.Results.Count(x => x.ResponseSuccess)}/{context.Results.Count}")</MudTd>
             </RowTemplate>
         </MudTable>
     </MudPaper>
 }
 
+<style>
+    .tp-result-table .mud-table-container table {
+        table-layout: fixed;
+        width: 100%;
+    }
+
+    .tp-wrap-cell {
+        white-space: normal;
+        word-break: break-word;
+        vertical-align: top;
+    }
+</style>
+
 @code {
     [Parameter] public string ModuleId { get; set; } = "";
     [Parameter] public string PageKey { get; set; } = "";
 
-    private const string BotTargetPlaceholder = "examplebot 或 https://t.me/examplebot";
+    private const string TextTitle = "\u673A\u5668\u4EBA\u7B7E\u5230\u52A9\u624B";
+    private const string TextIntro = "\u9002\u5408\u6279\u91CF\u7ED9\u7B7E\u5230\u673A\u5668\u4EBA\u53D1\u6D88\u606F\u3001\u67E5\u770B\u56DE\u590D\u3001\u70B9\u51FB\u56DE\u590D\u6309\u94AE\uFF0C\u5E76\u6839\u636E\u56DE\u590D\u5185\u5BB9\u51B3\u5B9A\u7EE7\u7EED\u4E0B\u4E00\u6761\u811A\u672C\u6216\u505C\u6B62\u3002";
+    private const string TextPresetLabel = "\u5E38\u7528\u8BB0\u5F55";
+    private const string TextPresetHelper = "\u53EF\u4EE5\u4FDD\u5B58\u6574\u5957\u673A\u5668\u4EBA\u3001\u811A\u672C\u3001\u8D26\u53F7\u9009\u62E9\u548C\u5EF6\u8FDF\u8BBE\u7F6E";
+    private const string TextPresetNone = "\u4E0D\u4F7F\u7528\u8BB0\u5F55";
+    private const string TextPresetNameLabel = "\u8BB0\u5F55\u540D\u79F0";
+    private const string TextPresetNamePlaceholder = "\u4F8B\u5982\uFF1A\u67D0\u673A\u5668\u4EBA\u6BCF\u65E5\u7B7E\u5230";
+    private const string TextSavePreset = "\u4FDD\u5B58\u8BB0\u5F55";
+    private const string TextDeletePreset = "\u5220\u9664\u8BB0\u5F55";
+    private const string TextBotTargetLabel = "\u673A\u5668\u4EBA\u7528\u6237\u540D\u6216\u94FE\u63A5";
+    private const string TextBotTargetPlaceholder = "@examplebot \u6216 https://t.me/examplebot";
+    private const string TextStartParameterLabel = "/start \u53C2\u6570\uFF08\u53EF\u9009\uFF09";
+    private const string TextWaitReplyLabel = "\u7B49\u5F85\u56DE\u590D\u8D85\u65F6\uFF08\u79D2\uFF09";
+    private const string TextDelayLabel = "\u8D26\u53F7\u95F4\u9694\uFF08\u79D2\uFF09";
+    private const string TextAutoStart = "\u9996\u6761\u811A\u672C\u524D\u5148\u53D1\u9001 /start";
+    private const string TextMarkRead = "\u6355\u83B7\u56DE\u590D\u540E\u81EA\u52A8\u5DF2\u8BFB";
+    private const string TextRandomDelay = "\u542F\u7528\u968F\u673A\u8D26\u53F7\u5EF6\u8FDF";
+    private const string TextRandomDelayMin = "\u968F\u673A\u5EF6\u8FDF\u6700\u5C0F\u503C\uFF08\u79D2\uFF09";
+    private const string TextRandomDelayMax = "\u968F\u673A\u5EF6\u8FDF\u6700\u5927\u503C\uFF08\u79D2\uFF09";
+    private const string TextAutoContinue = "\u81EA\u52A8\u8FDE\u7EED\u6267\u884C\u5168\u90E8\u811A\u672C";
+    private const string TextScriptLabel = "\u6D88\u606F\u811A\u672C\uFF08\u6BCF\u884C\u4E00\u6761\uFF09";
+    private const string TextScriptHelper = "\u4E0D\u4F1A\u518D\u56FA\u5B9A\u5185\u7F6E\u9ED8\u8BA4\u547D\u4EE4\u3002\u4E0B\u65B9\u4F1A\u663E\u793A\u4F60\u5386\u53F2\u4F7F\u7528\u8FC7\u7684\u547D\u4EE4\u5019\u9009\uFF0C\u70B9\u4E00\u4E0B\u5373\u53EF\u63D2\u5165\u3002";
+    private const string TextHistoryCommands = "\u5386\u53F2\u547D\u4EE4\u5019\u9009\uFF1A";
+    private const string TextAccountList = "\u8D26\u53F7\u5217\u8868";
+    private const string TextSelectedCount = "\u5DF2\u9009 {0} / {1}";
+    private const string TextRememberedCount = "\u8BE5\u673A\u5668\u4EBA\u5E38\u7528\u8D26\u53F7 {0}";
+    private const string TextRefreshAccounts = "\u5237\u65B0\u8D26\u53F7";
+    private const string TextSearchAccountLabel = "\u641C\u7D22\u8D26\u53F7";
+    private const string TextSearchAccountPlaceholder = "\u624B\u673A\u53F7 / \u7528\u6237\u540D / \u6635\u79F0 / \u5907\u6CE8";
+    private const string TextSelectFiltered = "\u9009\u62E9\u5F53\u524D\u7B5B\u9009";
+    private const string TextClearSelection = "\u6E05\u7A7A\u9009\u62E9";
+    private const string TextLoadRemembered = "\u8BFB\u53D6\u672C\u5730\u5E38\u7528\u8D26\u53F7";
+    private const string TextScanHistory = "\u626B\u63CF\u771F\u5B9E\u804A\u5929\u5386\u53F2";
+    private const string TextSelectRemembered = "\u4E00\u952E\u9009\u62E9\u8BE5\u673A\u5668\u4EBA\u5E38\u7528\u8D26\u53F7";
+    private const string TextShowAllAccounts = "\u663E\u793A\u5168\u90E8\u8D26\u53F7";
+    private const string TextOnlyBotAccounts = "\u4EC5\u770B\u8BE5\u673A\u5668\u4EBA\u5E38\u7528\u8D26\u53F7";
+    private const string TextColumnChoose = "\u9009\u62E9";
+    private const string TextColumnPhone = "\u624B\u673A\u53F7";
+    private const string TextColumnUsername = "\u7528\u6237\u540D";
+    private const string TextColumnDisplay = "\u663E\u793A\u540D / \u5907\u6CE8";
+    private const string TextColumnRemembered = "\u8BE5\u673A\u5668\u4EBA\u5E38\u7528";
+    private const string TextChoose = "\u9009\u62E9";
+    private const string TextSelected = "\u5DF2\u9009\u4E2D";
+    private const string TextYes = "\u662F";
+    private const string TextNoAccounts = "\u6CA1\u6709\u5339\u914D\u5230\u8D26\u53F7\u3002";
+    private const string TextCurrentStatusPrefix = "\u5F53\u524D\u72B6\u6001\uFF1A";
+    private const string TextStartContinuous = "\u5F00\u59CB\u8FDE\u7EED\u6267\u884C";
+    private const string TextStartFirst = "\u5F00\u59CB\u7B2C 1 \u6761";
+    private const string TextContinue = "\u7EE7\u7EED\u4E0B\u4E00\u6761";
+    private const string TextStop = "\u505C\u6B62";
+    private const string TextReset = "\u91CD\u7F6E";
+    private const string TextReplyPreviewTitle = "\u56DE\u590D\u5168\u6587\uFF1A";
+    private const string TextClose = "\u5173\u95ED";
+    private const string TextReplyFullLabel = "\u5B8C\u6574\u56DE\u590D";
+    private const string TextReplyButtonsPrefix = "\u53EF\u70B9\u6309\u94AE\uFF1A";
+    private const string TextCurrentViewTitle = "\u5F53\u524D\u67E5\u770B\uFF1A\u7B2C {0} \u6761";
+    private const string TextSendSuccessCount = "\u53D1\u9001\u6210\u529F {0}";
+    private const string TextReplyCapturedCount = "\u5DF2\u6355\u83B7\u56DE\u590D {0}";
+    private const string TextIssueCount = "\u5F02\u5E38\u6216\u672A\u56DE\u590D {0}";
+    private const string TextSelectFailedAccounts = "\u9009\u4E2D\u5931\u8D25\u8D26\u53F7";
+    private const string TextCurrentScriptPrefix = "\u5F53\u524D\u811A\u672C\u5185\u5BB9\uFF1A";
+    private const string TextResultAccount = "\u8D26\u53F7";
+    private const string TextResultSend = "\u53D1\u9001";
+    private const string TextResultReply = "\u56DE\u590D";
+    private const string TextResultReplyContent = "\u56DE\u590D\u5185\u5BB9";
+    private const string TextResultReplyButtons = "\u56DE\u590D\u6309\u94AE";
+    private const string TextResultError = "\u9519\u8BEF";
+    private const string TextSuccess = "\u6210\u529F";
+    private const string TextFailure = "\u5931\u8D25";
+    private const string TextReplyRead = "\u5DF2\u6355\u83B7\u5E76\u5DF2\u8BFB";
+    private const string TextReplyCaptured = "\u5DF2\u6355\u83B7";
+    private const string TextReplyNone = "\u65E0";
+    private const string TextViewFull = "\u67E5\u770B\u5168\u6587";
+    private const string TextHistoryTitle = "\u6267\u884C\u5386\u53F2";
+    private const string TextHistoryTime = "\u65F6\u95F4";
+    private const string TextHistoryStep = "\u811A\u672C\u884C";
+    private const string TextHistoryMessage = "\u6D88\u606F";
+    private const string TextHistorySend = "\u53D1\u9001\u6210\u529F";
+    private const string TextHistoryReply = "\u6355\u83B7\u56DE\u590D";
+    private const string TextHintReadyPrefix = "\u5DF2\u5C31\u7EEA\uFF1A";
 
     private bool loadingAccounts = true;
     private bool loadingBotUsage;
@@ -376,9 +566,14 @@
     private bool autoStartBeforeFirstMessage = true;
     private int waitTimeoutSeconds = 25;
     private int delayBetweenAccountsSeconds = 2;
+    private bool enableRandomDelay;
+    private int randomDelayMinSeconds;
+    private int randomDelayMaxSeconds;
+    private bool autoContinueAllSteps;
+    private bool markRepliesAsRead = true;
     private string messageScript = string.Empty;
     private string accountSearch = string.Empty;
-    private string currentStatusText = "等待开始";
+    private string currentStatusText = "Ready";
     private string selectedPresetName = string.Empty;
     private string presetName = string.Empty;
     private string activeResponseButtonKey = string.Empty;
@@ -394,43 +589,45 @@
     private readonly List<StepHistory> history = new();
     private readonly Dictionary<int, AccountTelegramToolsService.ResolvedChatTarget> resolvedTargets = new();
     private readonly Dictionary<int, string> resolvedBotUsernames = new();
+    private readonly Dictionary<int, List<AccountStepResult>> stepResultBuffers = new();
+    private readonly Dictionary<int, DateTimeOffset> stepExecutionTimes = new();
+    private readonly List<int> currentRunAccountIds = new();
+
+    private BotCheckinTaskConfig? currentRunConfig;
+    private AccountStepResult? previewRow;
     private CancellationTokenSource? runCts;
 
-    private IEnumerable<Account> FilteredAccounts => accounts
-        .Where(MatchesAccountFilter)
-        .OrderBy(x => x.Id);
-
-    private bool CanStart =>
-        !running
-        && !workflowActive
-        && !string.IsNullOrWhiteSpace(botTarget)
-        && selectedAccountIds.Count > 0
-        && ParseScriptMessages(messageScript).Count > 0;
-
-    private bool CanContinue => !running && HasNextStep;
+    private IEnumerable<Account> FilteredAccounts => accounts.Where(MatchesAccountFilter).OrderBy(x => x.Id);
+    private bool CanStart => !running && !workflowActive && string.IsNullOrWhiteSpace(GetCurrentConfigValidationError());
+    private bool CanContinue => !running && workflowActive && !(currentRunConfig?.AutoContinueAllSteps ?? autoContinueAllSteps) && HasNextStep;
     private bool CanStop => running || workflowActive;
-    private bool CanReset => !running && (workflowActive || currentStepIndex >= 0 || history.Count > 0);
+    private bool CanReset => !running && (workflowActive || currentStepIndex >= 0 || history.Count > 0 || currentRunConfig != null);
     private bool HasNextStep => workflowActive && currentStepIndex >= 0 && currentStepIndex + 1 < workflowMessages.Count;
-
-    private Severity StartHintSeverity => CanStart ? Severity.Success : Severity.Warning;
+    private int CurrentViewStepNumber => Math.Max(currentStepIndex + 1, 1);
+    private Severity StartHintSeverity => string.IsNullOrWhiteSpace(GetCurrentConfigValidationError()) ? Severity.Success : Severity.Warning;
+    private string ExecutionModeDescription => autoContinueAllSteps
+        ? "\u8FDE\u7EED\u6267\u884C\u6A21\u5F0F\uFF1A\u5F00\u59CB\u540E\u4F1A\u81EA\u52A8\u8DD1\u5B8C\u6574\u5957\u811A\u672C\u3002\u5F53\u524D\u5B9E\u73B0\u4F1A\u5148\u8BA9\u6BCF\u4E2A\u8D26\u53F7\u6309\u987A\u5E8F\u6267\u884C\u5168\u90E8\u6D88\u606F\uFF0C\u518D\u5207\u6362\u5230\u4E0B\u4E00\u4E2A\u8D26\u53F7\u3002"
+        : "\u9010\u6761\u786E\u8BA4\u6A21\u5F0F\uFF1A\u5148\u6267\u884C\u5F53\u524D\u4E00\u6761\u6D88\u606F\uFF0C\u67E5\u770B\u673A\u5668\u4EBA\u56DE\u590D\u540E\uFF0C\u518D\u51B3\u5B9A\u662F\u5426\u7EE7\u7EED\u4E0B\u4E00\u6761\u3002";
 
     private string StartHintText
     {
         get
         {
-            var scriptCount = ParseScriptMessages(messageScript).Count;
-
             if (running)
-                return "正在执行中，请等待当前轮次完成。";
-            if (workflowActive)
-                return HasNextStep ? "当前轮已完成，可查看回复后点击“继续下一条”。" : "流程正在处理中，请留意状态提示。";
-            if (string.IsNullOrWhiteSpace(botTarget))
-                return "请先填写机器人用户名或链接。";
-            if (selectedAccountIds.Count == 0)
-                return "请至少选择一个账号。";
-            if (scriptCount == 0)
-                return "请至少填写一条要发送的消息。";
-            return $"已就绪：{selectedAccountIds.Count} 个账号，{scriptCount} 条脚本。";
+                return "Running. Please wait for the current round to finish or stop it manually.";
+
+            if (workflowActive && !(currentRunConfig?.AutoContinueAllSteps ?? false) && HasNextStep)
+                return "\u5F53\u524D\u8FD9\u4E00\u6761\u5DF2\u7ECF\u6267\u884C\u5B8C\u6210\uFF0C\u8BF7\u5148\u67E5\u770B\u56DE\u590D\uFF0C\u518D\u51B3\u5B9A\u662F\u5426\u7EE7\u7EED\u4E0B\u4E00\u6761\u3002";
+
+            if (workflowActive && (currentRunConfig?.AutoContinueAllSteps ?? false))
+                return "Continuous run is in progress. Please watch the status area.";
+
+            var error = GetCurrentConfigValidationError();
+            if (!string.IsNullOrWhiteSpace(error))
+                return error;
+
+            var config = BuildCurrentConfig();
+            return $"{TextHintReadyPrefix}{config.SelectedAccountIds.Count} \u4E2A\u8D26\u53F7\uFF0C{config.GetMessages().Count} \u6761\u811A\u672C\u3002";
         }
     }
 
@@ -439,6 +636,7 @@
         await ReloadAccountsAsync();
         await ReloadPresetsAsync();
         await ReloadRecentCommandsAsync();
+        await LoadRememberedBotUsageAsync();
     }
 
     private async Task ReloadAccountsAsync()
@@ -446,20 +644,18 @@
         loadingAccounts = true;
         try
         {
-            accounts = (await AccountManagement.GetActiveAccountsAsync())
-                .OrderBy(x => x.Id)
-                .ToList();
-
+            accounts = (await AccountManagement.GetActiveAccountsAsync()).OrderBy(x => x.Id).ToList();
             var validIds = accounts.Select(x => x.Id).ToHashSet();
             selectedAccountIds.RemoveWhere(id => !validIds.Contains(id));
             rememberedBotAccountIds.RemoveWhere(id => !validIds.Contains(id));
-            currentStatusText = $"已加载 {accounts.Count} 个可用账号。";
+            currentRunAccountIds.RemoveAll(id => !validIds.Contains(id));
+            currentStatusText = $"Loaded {accounts.Count} accounts.";
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Load accounts failed");
-            currentStatusText = "加载账号失败";
-            Snackbar.Add($"加载账号失败：{ex.Message}", Severity.Error);
+            currentStatusText = "Failed to load accounts.";
+            Snackbar.Add($"Load accounts failed: {ex.Message}", Severity.Error);
         }
         finally
         {
@@ -494,35 +690,35 @@
             rememberedBotAccountIds.Add(accountId);
 
         if (rememberedBotAccountIds.Count > 0)
-            currentStatusText = $"已读取该机器人本地常用账号 {rememberedBotAccountIds.Count} 个。";
+            currentStatusText = $"Loaded {rememberedBotAccountIds.Count} remembered accounts for the bot.";
     }
 
     private async Task ScanBotUsageFromTelegramAsync()
     {
         if (string.IsNullOrWhiteSpace(botTarget))
         {
-            Snackbar.Add("请先填写机器人用户名或链接。", Severity.Warning);
+            Snackbar.Add("Please fill in the bot username or link first.", Severity.Warning);
             return;
         }
 
         loadingBotUsage = true;
         try
         {
-            currentStatusText = "正在扫描各账号与该机器人的真实聊天历史，请稍候。";
+            currentStatusText = "Scanning real Telegram chat history for the selected bot...";
             var matchedIds = await BotCompat.FindAccountsWithBotHistoryAsync(accounts, botTarget);
             rememberedBotAccountIds.Clear();
             foreach (var accountId in matchedIds)
                 rememberedBotAccountIds.Add(accountId);
 
             await PresetStore.RememberBotAccountUsageAsync(botTarget, matchedIds);
-            currentStatusText = $"扫描完成，找到 {matchedIds.Count} 个曾使用该机器人的账号。";
-            Snackbar.Add($"扫描完成，找到 {matchedIds.Count} 个曾使用该机器人的账号。", Severity.Success);
+            currentStatusText = $"Scan completed. Found {matchedIds.Count} matching accounts.";
+            Snackbar.Add($"Scan completed. Found {matchedIds.Count} matching accounts.", Severity.Success);
         }
         catch (Exception ex)
         {
             Logger.LogWarning(ex, "Scan bot usage failed");
-            currentStatusText = "扫描机器人历史失败";
-            Snackbar.Add($"扫描机器人历史失败：{ex.Message}", Severity.Error);
+            currentStatusText = "Scan failed.";
+            Snackbar.Add($"Scan failed: {ex.Message}", Severity.Error);
         }
         finally
         {
@@ -535,12 +731,13 @@
         showOnlyUsedWithBot = !showOnlyUsedWithBot;
     }
 
-    private void SelectRememberedBotAccounts()
+    private Task SelectRememberedBotAccountsAsync()
     {
         foreach (var accountId in rememberedBotAccountIds)
             selectedAccountIds.Add(accountId);
 
-        Snackbar.Add($"已选择该机器人常用账号 {rememberedBotAccountIds.Count} 个。", Severity.Success);
+        Snackbar.Add($"Selected {rememberedBotAccountIds.Count} remembered accounts.", Severity.Success);
+        return Task.CompletedTask;
     }
 
     private void ToggleAccountSelectionAsync(int accountId)
@@ -551,19 +748,19 @@
             selectedAccountIds.Add(accountId);
     }
 
-    private Task SelectAllFiltered()
+    private Task SelectAllFilteredAsync()
     {
         foreach (var account in FilteredAccounts)
             selectedAccountIds.Add(account.Id);
 
-        Snackbar.Add($"已选择 {selectedAccountIds.Count} 个账号。", Severity.Success);
+        Snackbar.Add($"Selected {selectedAccountIds.Count} accounts.", Severity.Success);
         return Task.CompletedTask;
     }
 
-    private Task ClearSelection()
+    private Task ClearSelectionAsync()
     {
         selectedAccountIds.Clear();
-        Snackbar.Add("已清空账号选择。", Severity.Info);
+        Snackbar.Add("Selection cleared.", Severity.Info);
         return Task.CompletedTask;
     }
 
@@ -579,28 +776,15 @@
         var preset = presets.FirstOrDefault(x => string.Equals(x.Name, selectedPresetName, StringComparison.OrdinalIgnoreCase));
         if (preset == null)
         {
-            Snackbar.Add("未找到选中的记录。", Severity.Warning);
+            Snackbar.Add("Preset not found.", Severity.Warning);
             return;
         }
 
-        botTarget = preset.BotTarget;
-        startParameter = preset.StartParameter;
-        autoStartBeforeFirstMessage = preset.AutoStartBeforeFirstMessage;
-        waitTimeoutSeconds = preset.WaitTimeoutSeconds;
-        delayBetweenAccountsSeconds = preset.DelayBetweenAccountsSeconds;
-        messageScript = preset.MessageScript;
+        ApplyConfig(BotCheckinTaskConfig.FromPreset(preset));
         presetName = preset.Name;
-
-        selectedAccountIds.Clear();
-        foreach (var accountId in preset.SelectedAccountIds)
-        {
-            if (accounts.Any(x => x.Id == accountId))
-                selectedAccountIds.Add(accountId);
-        }
-
         await LoadRememberedBotUsageAsync();
-        currentStatusText = $"已载入记录“{preset.Name}”。";
-        Snackbar.Add($"已载入记录“{preset.Name}”。", Severity.Success);
+        currentStatusText = $"Preset loaded: {preset.Name}";
+        Snackbar.Add($"Preset loaded: {preset.Name}", Severity.Success);
     }
 
     private async Task SaveCurrentPresetAsync()
@@ -608,40 +792,25 @@
         var finalPresetName = (presetName ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(finalPresetName))
         {
-            Snackbar.Add("请先填写记录名称。", Severity.Warning);
+            Snackbar.Add("Please enter a preset name first.", Severity.Warning);
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(botTarget))
+        var config = BuildCurrentConfig();
+        var validationError = config.Validate();
+        if (!string.IsNullOrWhiteSpace(validationError))
         {
-            Snackbar.Add("请先填写机器人用户名或链接。", Severity.Warning);
+            Snackbar.Add(validationError, Severity.Warning);
             return;
         }
 
-        var commands = ParseScriptMessages(messageScript);
-        if (commands.Count == 0)
-        {
-            Snackbar.Add("请至少填写一条脚本消息。", Severity.Warning);
-            return;
-        }
-
-        await PresetStore.SavePresetAsync(new BotCheckinAssistantPreset(
-            finalPresetName,
-            botTarget.Trim(),
-            startParameter.Trim(),
-            autoStartBeforeFirstMessage,
-            waitTimeoutSeconds,
-            delayBetweenAccountsSeconds,
-            messageScript,
-            selectedAccountIds.OrderBy(x => x).ToList(),
-            DateTimeOffset.UtcNow));
-
-        await PresetStore.RememberCommandsAsync(commands);
+        await PresetStore.SavePresetAsync(config.ToPreset(finalPresetName, DateTimeOffset.UtcNow));
+        await PresetStore.RememberCommandsAsync(config.GetMessages());
         selectedPresetName = finalPresetName;
         await ReloadPresetsAsync();
         await ReloadRecentCommandsAsync();
-        currentStatusText = $"已保存记录“{finalPresetName}”。";
-        Snackbar.Add($"已保存记录“{finalPresetName}”。", Severity.Success);
+        currentStatusText = $"Preset saved: {finalPresetName}";
+        Snackbar.Add($"Preset saved: {finalPresetName}", Severity.Success);
     }
 
     private async Task DeleteSelectedPresetAsync()
@@ -654,8 +823,8 @@
         selectedPresetName = string.Empty;
         presetName = string.Empty;
         await ReloadPresetsAsync();
-        currentStatusText = $"已删除记录“{deletingName}”。";
-        Snackbar.Add($"已删除记录“{deletingName}”。", Severity.Info);
+        currentStatusText = $"Preset deleted: {deletingName}";
+        Snackbar.Add($"Preset deleted: {deletingName}", Severity.Info);
     }
 
     private void AppendCommandFromHistory(string command)
@@ -670,7 +839,7 @@
             return;
         }
 
-        var existing = ParseScriptMessages(messageScript);
+        var existing = BotCheckinTaskConfig.ParseMessages(messageScript);
         if (!existing.Contains(value, StringComparer.OrdinalIgnoreCase))
             messageScript = $"{messageScript.TrimEnd()}{Environment.NewLine}{value}";
     }
@@ -680,62 +849,54 @@
         if (running)
             return;
 
-        var messages = ParseScriptMessages(messageScript);
-        if (messages.Count == 0)
+        var config = BuildCurrentConfig();
+        var validationError = config.Validate();
+        if (!string.IsNullOrWhiteSpace(validationError))
         {
-            Snackbar.Add("请至少填写一条脚本消息。", Severity.Warning);
+            Snackbar.Add(validationError, Severity.Warning);
             return;
         }
 
-        if (selectedAccountIds.Count == 0)
-        {
-            Snackbar.Add("请先选择账号。", Severity.Warning);
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(botTarget))
-        {
-            Snackbar.Add("请先填写机器人用户名或链接。", Severity.Warning);
-            return;
-        }
-
-        await PresetStore.RememberCommandsAsync(messages);
+        await PresetStore.RememberCommandsAsync(config.GetMessages());
         await ReloadRecentCommandsAsync();
 
-        workflowMessages.Clear();
-        workflowMessages.AddRange(messages);
-        currentStepResults.Clear();
-        history.Clear();
-        resolvedTargets.Clear();
-        resolvedBotUsernames.Clear();
-        currentStepIndex = -1;
-        workflowActive = true;
-        currentStatusText = $"准备执行第 1 条，共 {selectedAccountIds.Count} 个账号。";
+        PrepareNewWorkflow(config);
+        currentStatusText = config.AutoContinueAllSteps
+            ? $"Ready to run continuously. Accounts: {currentRunAccountIds.Count}, messages: {workflowMessages.Count}."
+            : $"Ready to run step 1. Accounts: {currentRunAccountIds.Count}.";
 
-        Snackbar.Add($"开始执行第 1 条，目标账号 {selectedAccountIds.Count} 个。", Severity.Info);
-        await ExecuteNextStepAsync();
+        Snackbar.Add(
+            config.AutoContinueAllSteps
+                ? $"Continuous run started for {currentRunAccountIds.Count} accounts."
+                : $"Step 1 started for {currentRunAccountIds.Count} accounts.",
+            Severity.Info);
+
+        if (config.AutoContinueAllSteps)
+            await ExecuteContinuousWorkflowAsync();
+        else
+            await ExecuteSelectedStepAcrossAccountsAsync(0);
     }
 
     private async Task ContinueWorkflowAsync()
     {
-        if (!HasNextStep || running)
+        if (!HasNextStep || running || currentRunConfig == null)
             return;
 
-        currentStatusText = $"准备执行第 {currentStepIndex + 2} 条。";
-        Snackbar.Add($"开始执行第 {currentStepIndex + 2} 条。", Severity.Info);
-        await ExecuteNextStepAsync();
+        currentStatusText = $"Preparing step {currentStepIndex + 2}.";
+        Snackbar.Add($"Step {currentStepIndex + 2} started.", Severity.Info);
+        await ExecuteSelectedStepAcrossAccountsAsync(currentStepIndex + 1);
     }
 
-    private Task StopWorkflow()
+    private Task StopWorkflowAsync()
     {
         workflowActive = false;
         runCts?.Cancel();
-        currentStatusText = "流程已停止。";
-        Snackbar.Add("流程已停止。", Severity.Warning);
+        currentStatusText = "Workflow stopped.";
+        Snackbar.Add("Workflow stopped.", Severity.Warning);
         return Task.CompletedTask;
     }
 
-    private Task ResetWorkflow()
+    private Task ResetWorkflowAsync()
     {
         if (running)
             return Task.CompletedTask;
@@ -747,125 +908,94 @@
         history.Clear();
         resolvedTargets.Clear();
         resolvedBotUsernames.Clear();
-        currentStatusText = "流程已重置。";
-        Snackbar.Add("流程已重置。", Severity.Info);
+        stepResultBuffers.Clear();
+        stepExecutionTimes.Clear();
+        currentRunAccountIds.Clear();
+        currentRunConfig = null;
+        previewRow = null;
+        currentStatusText = "Workflow reset.";
+        Snackbar.Add("Workflow reset.", Severity.Info);
         return Task.CompletedTask;
     }
 
-    private async Task ExecuteNextStepAsync()
+    private async Task ExecuteSelectedStepAcrossAccountsAsync(int stepIndex)
     {
-        if (!workflowActive)
+        if (currentRunConfig == null)
             return;
 
-        var stepIndex = currentStepIndex + 1;
-        if (stepIndex < 0 || stepIndex >= workflowMessages.Count)
-        {
-            workflowActive = false;
-            currentStatusText = "没有可执行的下一条脚本。";
-            return;
-        }
-
-        await ExecuteStepAsync(stepIndex);
-    }
-
-    private async Task ExecuteStepAsync(int stepIndex)
-    {
-        var selectedAccounts = accounts
-            .Where(x => selectedAccountIds.Contains(x.Id))
-            .OrderBy(x => x.Id)
-            .ToList();
-
+        var selectedAccounts = GetCurrentRunAccounts();
         if (selectedAccounts.Count == 0)
         {
             workflowActive = false;
-            currentStatusText = "当前没有可执行的已选账号。";
-            Snackbar.Add("当前没有可执行的已选账号。", Severity.Warning);
+            currentStatusText = "No runnable selected accounts.";
+            Snackbar.Add("No runnable selected accounts.", Severity.Warning);
             return;
         }
 
         var message = workflowMessages[stepIndex];
-        var stepResults = new List<AccountStepResult>();
-        var timeoutSeconds = Math.Clamp(waitTimeoutSeconds, 3, 300);
-        var delaySeconds = Math.Clamp(delayBetweenAccountsSeconds, 0, 60);
-        var successfulAccountIds = new List<int>();
-
         running = true;
-        currentStepResults.Clear();
         runCts = new CancellationTokenSource();
         var cancellationToken = runCts.Token;
-        currentStatusText = $"正在执行第 {stepIndex + 1} 条，共 {selectedAccounts.Count} 个账号。";
+        currentStatusText = $"Running step {stepIndex + 1} for {selectedAccounts.Count} accounts.";
         StateHasChanged();
 
         try
         {
-            for (var i = 0; i < selectedAccounts.Count; i++)
+            for (var index = 0; index < selectedAccounts.Count; index++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var account = selectedAccounts[i];
-                currentStatusText = $"正在处理账号 {i + 1}/{selectedAccounts.Count}：{BuildAccountLabel(account)}";
+                var account = selectedAccounts[index];
+                currentStatusText = $"Processing account {index + 1}/{selectedAccounts.Count}: {BuildAccountLabel(account)}";
                 StateHasChanged();
 
-                var row = await ExecuteAccountStepAsync(account, message, stepIndex, timeoutSeconds, cancellationToken);
-                if (row.SendSuccess)
-                    successfulAccountIds.Add(account.Id);
+                var row = await ExecuteAccountStepAsync(account, message, stepIndex, currentRunConfig, cancellationToken);
+                AppendStepResult(stepIndex, row);
 
-                stepResults.Add(row);
-                PushCurrentStepResults(stepResults);
-
-                if (delaySeconds > 0 && i < selectedAccounts.Count - 1)
-                    await Task.Delay(TimeSpan.FromSeconds(delaySeconds), cancellationToken);
+                if (index < selectedAccounts.Count - 1)
+                {
+                    var delaySeconds = currentRunConfig.GetNextAccountDelaySeconds();
+                    if (delaySeconds > 0)
+                    {
+                        currentStatusText = $"{BuildAccountLabel(account)} done. Waiting {delaySeconds}s for the next account.";
+                        StateHasChanged();
+                        await Task.Delay(TimeSpan.FromSeconds(delaySeconds), cancellationToken);
+                    }
+                }
             }
 
-            if (successfulAccountIds.Count > 0)
-            {
-                await PresetStore.RememberBotAccountUsageAsync(botTarget, successfulAccountIds, cancellationToken);
-                foreach (var id in successfulAccountIds)
-                    rememberedBotAccountIds.Add(id);
-            }
-
-            currentStepIndex = stepIndex;
-            currentStepResults.Clear();
-            currentStepResults.AddRange(stepResults.Select(x => x.Clone()));
-            history.Insert(0, new StepHistory
-            {
-                StepNumber = stepIndex + 1,
-                Message = message,
-                ExecutedAt = DateTimeOffset.Now,
-                Results = stepResults.Select(x => x.Clone()).ToList()
-            });
-
-            if (currentStepIndex >= workflowMessages.Count - 1)
+            currentStepIndex = Math.Max(currentStepIndex, stepIndex);
+            if (stepIndex >= workflowMessages.Count - 1)
             {
                 workflowActive = false;
-                currentStatusText = "全部脚本已执行完成。";
-                Snackbar.Add("全部脚本已执行完成。", Severity.Success);
+                currentStatusText = "All script messages completed.";
+                Snackbar.Add("All script messages completed.", Severity.Success);
             }
             else
             {
-                currentStatusText = $"第 {currentStepIndex + 1} 条执行完成，请查看回复后决定是否继续。";
-                Snackbar.Add($"第 {currentStepIndex + 1} 条执行完成。请查看回复后再决定是否继续。", Severity.Info);
+                currentStatusText = $"Step {stepIndex + 1} finished. Review replies before continuing.";
+                Snackbar.Add($"Step {stepIndex + 1} finished. Review replies before continuing.", Severity.Info);
             }
         }
         catch (OperationCanceledException) when (runCts?.IsCancellationRequested == true)
         {
             workflowActive = false;
-            currentStatusText = "执行已取消。";
-            Snackbar.Add("执行已取消。", Severity.Warning);
+            currentStatusText = "Execution canceled.";
+            Snackbar.Add("Execution canceled.", Severity.Warning);
         }
         catch (OperationCanceledException ex)
         {
             workflowActive = false;
-            currentStatusText = "执行被意外中断。";
+            currentStatusText = "Execution interrupted unexpectedly.";
             Logger.LogWarning(ex, "Bot check-in workflow interrupted unexpectedly");
-            Snackbar.Add($"执行被意外中断：{ex.Message}", Severity.Error);
+            Snackbar.Add($"Execution interrupted unexpectedly: {ex.Message}", Severity.Error);
         }
         catch (Exception ex)
         {
             workflowActive = false;
-            currentStatusText = "执行失败。";
-            Logger.LogError(ex, "Execute bot check-in step failed");
-            Snackbar.Add($"执行失败：{ex.Message}", Severity.Error);
+            currentStatusText = "Execution failed.";
+            Logger.LogError(ex, "ExecuteSelectedStepAcrossAccountsAsync failed");
+            Snackbar.Add($"Execution failed: {ex.Message}", Severity.Error);
         }
         finally
         {
@@ -876,31 +1006,101 @@
         }
     }
 
-    private async Task<AccountStepResult> ExecuteAccountStepAsync(
-        Account account,
-        string message,
-        int stepIndex,
-        int timeoutSeconds,
-        CancellationToken cancellationToken)
+    private async Task ExecuteContinuousWorkflowAsync()
     {
-        var row = new AccountStepResult
+        if (currentRunConfig == null)
+            return;
+
+        var selectedAccounts = GetCurrentRunAccounts();
+        if (selectedAccounts.Count == 0)
         {
-            AccountId = account.Id,
-            AccountLabel = BuildAccountLabel(account)
-        };
+            workflowActive = false;
+            currentStatusText = "No runnable selected accounts.";
+            Snackbar.Add("No runnable selected accounts.", Severity.Warning);
+            return;
+        }
+
+        running = true;
+        runCts = new CancellationTokenSource();
+        var cancellationToken = runCts.Token;
+        currentStatusText = $"Running continuously. Accounts: {selectedAccounts.Count}, messages: {workflowMessages.Count}.";
+        StateHasChanged();
+
+        try
+        {
+            for (var accountIndex = 0; accountIndex < selectedAccounts.Count; accountIndex++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var account = selectedAccounts[accountIndex];
+                for (var stepIndex = 0; stepIndex < workflowMessages.Count; stepIndex++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    currentStatusText = $"Account {accountIndex + 1}/{selectedAccounts.Count}, message {stepIndex + 1}/{workflowMessages.Count}: {BuildAccountLabel(account)}";
+                    StateHasChanged();
+
+                    var row = await ExecuteAccountStepAsync(account, workflowMessages[stepIndex], stepIndex, currentRunConfig, cancellationToken);
+                    AppendStepResult(stepIndex, row);
+                }
+
+                if (accountIndex < selectedAccounts.Count - 1)
+                {
+                    var delaySeconds = currentRunConfig.GetNextAccountDelaySeconds();
+                    if (delaySeconds > 0)
+                    {
+                        currentStatusText = $"{BuildAccountLabel(account)} finished. Waiting {delaySeconds}s for the next account.";
+                        StateHasChanged();
+                        await Task.Delay(TimeSpan.FromSeconds(delaySeconds), cancellationToken);
+                    }
+                }
+            }
+
+            workflowActive = false;
+            currentStepIndex = workflowMessages.Count - 1;
+            currentStatusText = "Continuous run completed.";
+            Snackbar.Add("Continuous run completed.", Severity.Success);
+        }
+        catch (OperationCanceledException) when (runCts?.IsCancellationRequested == true)
+        {
+            workflowActive = false;
+            currentStatusText = "Continuous run canceled.";
+            Snackbar.Add("Continuous run canceled.", Severity.Warning);
+        }
+        catch (OperationCanceledException ex)
+        {
+            workflowActive = false;
+            currentStatusText = "Continuous run interrupted unexpectedly.";
+            Logger.LogWarning(ex, "Bot check-in continuous workflow interrupted unexpectedly");
+            Snackbar.Add($"Continuous run interrupted unexpectedly: {ex.Message}", Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            workflowActive = false;
+            currentStatusText = "Continuous run failed.";
+            Logger.LogError(ex, "ExecuteContinuousWorkflowAsync failed");
+            Snackbar.Add($"Continuous run failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            running = false;
+            runCts?.Dispose();
+            runCts = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task<AccountStepResult> ExecuteAccountStepAsync(Account account, string message, int stepIndex, BotCheckinTaskConfig config, CancellationToken cancellationToken)
+    {
+        var row = new AccountStepResult { AccountId = account.Id, AccountLabel = BuildAccountLabel(account) };
 
         try
         {
             if (!resolvedTargets.TryGetValue(account.Id, out var target))
             {
-                var resolve = await BotCompat.ResolveExternalBotTargetAsync(
-                    account.Id,
-                    botTarget,
-                    cancellationToken,
-                    assumeBotUsername: true);
+                var resolve = await BotCompat.ResolveExternalBotTargetAsync(account.Id, config.BotTarget, cancellationToken, assumeBotUsername: true);
                 if (!resolve.Success || resolve.Target == null)
                 {
-                    row.Error = resolve.Error ?? "解析机器人目标失败。";
+                    row.Error = resolve.Error ?? "Resolve bot target failed.";
                     return row;
                 }
 
@@ -911,52 +1111,33 @@
             }
 
             var normalizedMessage = (message ?? string.Empty).Trim();
-            if (stepIndex == 0
-                && autoStartBeforeFirstMessage
-                && !string.Equals(normalizedMessage, "/start", StringComparison.OrdinalIgnoreCase))
+            if (stepIndex == 0 && config.AutoStartBeforeFirstMessage && !string.Equals(normalizedMessage, "/start", StringComparison.OrdinalIgnoreCase))
             {
-                if (!string.IsNullOrWhiteSpace(startParameter))
+                if (!string.IsNullOrWhiteSpace(config.StartParameter))
                 {
-                    var start = await AccountTelegramTools.StartExternalBotAsync(
-                        account.Id,
-                        botTarget,
-                        startParameter,
-                        cancellationToken,
-                        assumeBotUsername: true);
+                    var start = await AccountTelegramTools.StartExternalBotAsync(account.Id, config.BotTarget, config.StartParameter, cancellationToken, assumeBotUsername: true);
                     if (!start.Success)
                     {
-                        row.Error = start.Error ?? "发送带参数 /start 失败。";
+                        row.Error = start.Error ?? "Send /start with parameter failed.";
                         return row;
                     }
                 }
                 else
                 {
-                    var plainStart = await AccountTelegramTools.SendMessageToResolvedChatAsync(
-                        account.Id,
-                        target,
-                        "/start",
-                        replyToMessageId: null,
-                        cancellationToken: cancellationToken);
-
+                    var plainStart = await AccountTelegramTools.SendMessageToResolvedChatAsync(account.Id, target, "/start", replyToMessageId: null, cancellationToken: cancellationToken);
                     if (!plainStart.Success)
                     {
-                        row.Error = plainStart.Error ?? "发送 /start 失败。";
+                        row.Error = plainStart.Error ?? "Send /start failed.";
                         return row;
                     }
                 }
             }
 
-            var send = await AccountTelegramTools.SendMessageToResolvedChatAsync(
-                account.Id,
-                target,
-                message,
-                replyToMessageId: null,
-                cancellationToken: cancellationToken);
-
+            var send = await AccountTelegramTools.SendMessageToResolvedChatAsync(account.Id, target, normalizedMessage, replyToMessageId: null, cancellationToken: cancellationToken);
             row.SendSuccess = send.Success;
             if (!send.Success || !send.MessageId.HasValue)
             {
-                row.Error = send.Error ?? "发送消息失败。";
+                row.Error = send.Error ?? "Send message failed.";
                 return row;
             }
 
@@ -965,17 +1146,18 @@
                 target,
                 send.MessageId.Value,
                 account.Username,
-                timeoutSeconds,
+                config.WaitTimeoutSeconds,
                 resolvedBotUsernames.GetValueOrDefault(account.Id),
+                config.MarkRepliesAsRead,
                 cancellationToken);
 
             if (!wait.Success || wait.Candidate == null)
             {
-                row.Error = wait.Error ?? "未捕获到回复。";
+                row.Error = wait.Error ?? "Reply was not captured.";
                 return row;
             }
 
-            ApplyCandidateToResult(row, wait.Candidate);
+            ApplyCandidateToResult(row, wait.Candidate, config.MarkRepliesAsRead);
             return row;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -1006,55 +1188,56 @@
 
         if (!resolvedTargets.TryGetValue(accountId, out var target) || row.ResponseMessageId <= 0)
         {
-            Snackbar.Add("当前没有可用的回复按钮上下文。", Severity.Warning);
+            Snackbar.Add("The reply button context is not available.", Severity.Warning);
             return;
         }
 
         activeResponseButtonKey = $"{accountId}:{buttonIndex}";
-        currentStatusText = $"正在点击 {row.AccountLabel} 的回复按钮：{button.Text}";
+        currentStatusText = $"Clicking reply button for {row.AccountLabel}: {button.Text}";
         StateHasChanged();
 
         try
         {
-            var click = await AccountTelegramTools.ClickInlineButtonAsync(
-                accountId,
-                target,
-                row.ResponseMessageId,
-                button.CallbackData);
-
+            var click = await AccountTelegramTools.ClickInlineButtonAsync(accountId, target, row.ResponseMessageId, button.CallbackData);
             if (!click.Success)
             {
-                row.Error = click.Error ?? "点击回复按钮失败。";
+                row.Error = click.Error ?? "Click reply button failed.";
                 Snackbar.Add(row.Error, Severity.Error);
                 return;
             }
 
+            var config = currentRunConfig ?? BuildCurrentConfig();
             var followUp = await BotCompat.WaitForBotReplyAsync(
                 accountId,
                 target,
                 row.ResponseMessageId,
                 account.Username,
-                waitTimeoutSeconds,
-                resolvedBotUsernames.GetValueOrDefault(accountId));
+                config.WaitTimeoutSeconds,
+                resolvedBotUsernames.GetValueOrDefault(accountId),
+                config.MarkRepliesAsRead);
 
             if (!followUp.Success || followUp.Candidate == null)
             {
-                row.Error = followUp.Error ?? "点击按钮后未捕获到新回复。";
+                row.Error = followUp.Error ?? "No new reply was captured after clicking the button.";
                 Snackbar.Add(row.Error, Severity.Warning);
                 return;
             }
 
-            ApplyCandidateToResult(row, followUp.Candidate);
+            ApplyCandidateToResult(row, followUp.Candidate, config.MarkRepliesAsRead);
             row.Error = null;
-            currentStatusText = $"已更新 {row.AccountLabel} 的最新回复。";
-            Snackbar.Add($"已更新 {row.AccountLabel} 的最新回复。", Severity.Success);
+            UpdateBufferedRow(row);
+            if (previewRow?.AccountId == row.AccountId)
+                previewRow = row.Clone();
+
+            currentStatusText = $"Updated latest reply for {row.AccountLabel}.";
+            Snackbar.Add($"Updated latest reply for {row.AccountLabel}.", Severity.Success);
             StateHasChanged();
         }
         catch (Exception ex)
         {
             Logger.LogWarning(ex, "ClickResponseButtonAsync failed");
             row.Error = ex.Message;
-            Snackbar.Add($"点击回复按钮失败：{ex.Message}", Severity.Error);
+            Snackbar.Add($"Click reply button failed: {ex.Message}", Severity.Error);
         }
         finally
         {
@@ -1063,29 +1246,85 @@
         }
     }
 
-    private void SelectFailedAccountsFromCurrentRound()
+    private Task SelectFailedAccountsFromCurrentRoundAsync()
     {
         selectedAccountIds.Clear();
-        foreach (var item in currentStepResults.Where(x => !x.SendSuccess || !x.ResponseSuccess))
+        foreach (var item in currentStepResults.Where(HasRowIssue))
             selectedAccountIds.Add(item.AccountId);
 
-        Snackbar.Add($"已选中本轮需重试账号 {selectedAccountIds.Count} 个。", Severity.Info);
+        Snackbar.Add($"Selected {selectedAccountIds.Count} failed accounts from the current round.", Severity.Info);
+        return Task.CompletedTask;
     }
 
-    private void PushCurrentStepResults(IEnumerable<AccountStepResult> results)
+    private void ShowReplyPreview(AccountStepResult row)
     {
+        previewRow = row.Clone();
+    }
+
+    private void ClosePreview()
+    {
+        previewRow = null;
+    }
+
+    private void AppendStepResult(int stepIndex, AccountStepResult row)
+    {
+        if (!stepResultBuffers.TryGetValue(stepIndex, out var buffer))
+        {
+            buffer = new List<AccountStepResult>();
+            stepResultBuffers[stepIndex] = buffer;
+        }
+
+        var existingIndex = buffer.FindIndex(x => x.AccountId == row.AccountId);
+        if (existingIndex >= 0)
+            buffer[existingIndex] = row.Clone();
+        else
+            buffer.Add(row.Clone());
+
+        stepExecutionTimes[stepIndex] = DateTimeOffset.Now;
+        currentStepIndex = Math.Max(currentStepIndex, stepIndex);
         currentStepResults.Clear();
-        currentStepResults.AddRange(results.Select(x => x.Clone()));
+        currentStepResults.AddRange(buffer.OrderBy(x => x.AccountId).Select(x => x.Clone()));
+        RefreshHistory();
         StateHasChanged();
     }
 
-    private void ApplyCandidateToResult(AccountStepResult row, TelegramVerificationMessageCandidate candidate)
+    private void UpdateBufferedRow(AccountStepResult row)
+    {
+        if (!stepResultBuffers.TryGetValue(currentStepIndex, out var currentBuffer))
+            return;
+
+        var currentIndex = currentBuffer.FindIndex(x => x.AccountId == row.AccountId);
+        if (currentIndex >= 0)
+            currentBuffer[currentIndex] = row.Clone();
+
+        currentStepResults.Clear();
+        currentStepResults.AddRange(currentBuffer.OrderBy(x => x.AccountId).Select(x => x.Clone()));
+        RefreshHistory();
+    }
+
+    private void RefreshHistory()
+    {
+        history.Clear();
+        foreach (var stepIndex in stepResultBuffers.Keys.OrderByDescending(x => x))
+        {
+            history.Add(new StepHistory
+            {
+                StepNumber = stepIndex + 1,
+                Message = workflowMessages.ElementAtOrDefault(stepIndex) ?? string.Empty,
+                ExecutedAt = stepExecutionTimes.GetValueOrDefault(stepIndex, DateTimeOffset.Now),
+                Results = stepResultBuffers[stepIndex].OrderBy(x => x.AccountId).Select(x => x.Clone()).ToList()
+            });
+        }
+    }
+
+    private void ApplyCandidateToResult(AccountStepResult row, TelegramVerificationMessageCandidate candidate, bool markAsRead)
     {
         row.ResponseSuccess = true;
         row.ResponseMessageId = candidate.MessageId;
         row.ResponseText = NormalizeResponseText(candidate);
         row.ResponseButtonsSummary = BuildButtonsSummary(candidate);
         row.ResponseButtons = candidate.Buttons.ToList();
+        row.MarkedAsRead = markAsRead;
     }
 
     private bool MatchesAccountFilter(Account account)
@@ -1103,16 +1342,78 @@
                || (account.Remark ?? string.Empty).Contains(keyword, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static List<string> ParseScriptMessages(string? raw)
+    private void PrepareNewWorkflow(BotCheckinTaskConfig config)
     {
-        if (string.IsNullOrWhiteSpace(raw))
-            return new List<string>();
+        currentRunConfig = config;
+        workflowMessages.Clear();
+        workflowMessages.AddRange(config.GetMessages());
+        currentRunAccountIds.Clear();
+        currentRunAccountIds.AddRange(config.SelectedAccountIds);
+        currentStepIndex = -1;
+        workflowActive = true;
+        currentStepResults.Clear();
+        history.Clear();
+        resolvedTargets.Clear();
+        resolvedBotUsernames.Clear();
+        stepResultBuffers.Clear();
+        stepExecutionTimes.Clear();
+        previewRow = null;
+    }
 
-        return raw
-            .Replace("\r", "\n", StringComparison.Ordinal)
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .ToList();
+    private List<Account> GetCurrentRunAccounts()
+    {
+        var ids = currentRunAccountIds.ToHashSet();
+        return accounts.Where(x => ids.Contains(x.Id)).OrderBy(x => x.Id).ToList();
+    }
+
+    private BotCheckinTaskConfig BuildCurrentConfig()
+    {
+        return new BotCheckinTaskConfig
+        {
+            TaskName = presetName,
+            BotTarget = botTarget,
+            StartParameter = startParameter,
+            AutoStartBeforeFirstMessage = autoStartBeforeFirstMessage,
+            WaitTimeoutSeconds = waitTimeoutSeconds,
+            DelayBetweenAccountsSeconds = delayBetweenAccountsSeconds,
+            EnableRandomDelay = enableRandomDelay,
+            RandomDelayMinSeconds = randomDelayMinSeconds,
+            RandomDelayMaxSeconds = randomDelayMaxSeconds,
+            AutoContinueAllSteps = autoContinueAllSteps,
+            MarkRepliesAsRead = markRepliesAsRead,
+            MessageScript = messageScript,
+            SelectedAccountIds = selectedAccountIds.OrderBy(x => x).ToList()
+        };
+    }
+
+    private string? GetCurrentConfigValidationError()
+    {
+        return BuildCurrentConfig().Validate();
+    }
+
+    private void ApplyConfig(BotCheckinTaskConfig config)
+    {
+        config.Normalize();
+        botTarget = config.BotTarget;
+        startParameter = config.StartParameter;
+        autoStartBeforeFirstMessage = config.AutoStartBeforeFirstMessage;
+        waitTimeoutSeconds = config.WaitTimeoutSeconds;
+        delayBetweenAccountsSeconds = config.DelayBetweenAccountsSeconds;
+        enableRandomDelay = config.EnableRandomDelay;
+        randomDelayMinSeconds = config.RandomDelayMinSeconds;
+        randomDelayMaxSeconds = config.RandomDelayMaxSeconds;
+        autoContinueAllSteps = config.AutoContinueAllSteps;
+        markRepliesAsRead = config.MarkRepliesAsRead;
+        messageScript = config.MessageScript;
+
+        selectedAccountIds.Clear();
+        foreach (var accountId in config.SelectedAccountIds.Where(x => accounts.Any(a => a.Id == x)))
+            selectedAccountIds.Add(accountId);
+    }
+
+    private static bool HasRowIssue(AccountStepResult row)
+    {
+        return !row.SendSuccess || !row.ResponseSuccess || !string.IsNullOrWhiteSpace(row.Error);
     }
 
     private static string BuildAccountLabel(Account account)
@@ -1139,8 +1440,8 @@
         if (!string.IsNullOrWhiteSpace(candidate.Text))
             return candidate.Text.Trim();
         if (candidate.ImageJpegBytes is { Length: > 0 })
-            return "[图片]";
-        return "[无文本]";
+            return "[image]";
+        return "[no text reply]";
     }
 
     private static string? BuildButtonsSummary(TelegramVerificationMessageCandidate candidate)
@@ -1151,7 +1452,7 @@
         return string.Join(" | ", candidate.Buttons.Select(x => Shorten(x.Text, 16)));
     }
 
-    private static string ToSingleLine(string? text, int maxLength)
+    private static string ShortenMultiline(string? text, int maxLength)
     {
         if (string.IsNullOrWhiteSpace(text))
             return "-";
@@ -1177,6 +1478,7 @@
         public string AccountLabel { get; init; } = string.Empty;
         public bool SendSuccess { get; set; }
         public bool ResponseSuccess { get; set; }
+        public bool MarkedAsRead { get; set; }
         public int ResponseMessageId { get; set; }
         public string? ResponseText { get; set; }
         public string? ResponseButtonsSummary { get; set; }
@@ -1191,6 +1493,7 @@
                 AccountLabel = AccountLabel,
                 SendSuccess = SendSuccess,
                 ResponseSuccess = ResponseSuccess,
+                MarkedAsRead = MarkedAsRead,
                 ResponseMessageId = ResponseMessageId,
                 ResponseText = ResponseText,
                 ResponseButtonsSummary = ResponseButtonsSummary,

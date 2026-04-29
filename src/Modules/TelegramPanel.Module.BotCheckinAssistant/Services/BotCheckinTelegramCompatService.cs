@@ -47,10 +47,10 @@ public sealed class BotCheckinTelegramCompatService
 
             var resolved = await client.Contacts_ResolveUsername(username);
             if (resolved.User is not User user)
-                return (false, "无法解析机器人用户名。", null, null);
+                return (false, "Unable to resolve the bot username.", null, null);
 
             if (user.access_hash == 0)
-                return (false, "无法获取机器人 access_hash。", null, null);
+                return (false, "Unable to get the bot access_hash.", null, null);
 
             var target = new AccountTelegramToolsService.ResolvedChatTarget(
                 new InputPeerUser(user.id, user.access_hash),
@@ -74,30 +74,62 @@ public sealed class BotCheckinTelegramCompatService
         string? currentUsername,
         int timeoutSeconds,
         string? botUsername,
+        bool markAsRead = true,
         CancellationToken cancellationToken = default)
     {
         var waitStartedAtUtc = DateTimeOffset.UtcNow;
-        var allowedSenders = BuildAllowedSenders(target, botUsername);
-        var botUserId = TryGetBotUserId(target);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        var liveWaitTask = WaitForLiveReplyAsync(
+            accountId,
+            target,
+            sentMessageId,
+            currentUsername,
+            timeoutSeconds,
+            botUsername,
+            waitStartedAtUtc,
+            linkedCts.Token);
+
+        var historyWaitTask = WaitForHistoryReplyUntilAsync(
+            accountId,
+            target,
+            sentMessageId,
+            currentUsername,
+            waitStartedAtUtc,
+            botUsername,
+            timeoutSeconds,
+            linkedCts.Token);
 
         try
         {
-            var liveResult = await _accountTelegramTools.WaitForBotVerificationMessageAsync(
-                accountId,
-                target,
-                sentMessageId,
-                currentUsername,
-                timeoutSeconds,
-                messageFilter: update => IsLikelyBotReplyUpdate(update, sentMessageId, botUserId, botUsername),
-                allowedSenderUsernames: allowedSenders,
-                restrictToAllowedUsernames: false,
-                stopOnUnmatchedMention: false,
-                cancellationToken: cancellationToken);
-
-            if (liveResult.Success && liveResult.Candidate != null)
+            while (true)
             {
-                await TryMarkChatAsReadAsync(accountId, target, liveResult.Candidate.MessageId, cancellationToken);
-                return liveResult;
+                var completedTask = await Task.WhenAny(liveWaitTask, historyWaitTask);
+                if (completedTask == historyWaitTask)
+                {
+                    var historyCandidate = await historyWaitTask;
+                    if (historyCandidate != null)
+                    {
+                        linkedCts.Cancel();
+                        if (markAsRead)
+                            await TryMarkChatAsReadAsync(accountId, target, historyCandidate.MessageId, cancellationToken);
+                        return (true, null, historyCandidate);
+                    }
+
+                    break;
+                }
+
+                var liveResult = await liveWaitTask;
+                if (liveResult.Success && liveResult.Candidate != null)
+                {
+                    linkedCts.Cancel();
+                    if (markAsRead)
+                        await TryMarkChatAsReadAsync(accountId, target, liveResult.Candidate.MessageId, cancellationToken);
+                    return liveResult;
+                }
+
+                if (historyWaitTask.IsCompleted)
+                    break;
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -106,10 +138,10 @@ public sealed class BotCheckinTelegramCompatService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Live reply wait failed, fallback to history: accountId={AccountId}", accountId);
+            _logger.LogWarning(ex, "WaitForBotReplyAsync failed, fallback to final history scan: accountId={AccountId}", accountId);
         }
 
-        var fallback = await TryReadRecentBotReplyFromHistoryAsync(
+        var finalFallback = await TryReadRecentBotReplyFromHistoryAsync(
             accountId,
             target,
             sentMessageId,
@@ -118,13 +150,14 @@ public sealed class BotCheckinTelegramCompatService
             botUsername,
             cancellationToken);
 
-        if (fallback != null)
+        if (finalFallback != null)
         {
-            await TryMarkChatAsReadAsync(accountId, target, fallback.MessageId, cancellationToken);
-            return (true, null, fallback);
+            if (markAsRead)
+                await TryMarkChatAsReadAsync(accountId, target, finalFallback.MessageId, cancellationToken);
+            return (true, null, finalFallback);
         }
 
-        return (false, $"等待机器人回复超时（{timeoutSeconds} 秒）", null);
+        return (false, $"Timed out waiting for bot reply ({timeoutSeconds}s).", null);
     }
 
     public async Task<IReadOnlyList<int>> FindAccountsWithBotHistoryAsync(
@@ -215,6 +248,90 @@ public sealed class BotCheckinTelegramCompatService
         }
     }
 
+    private async Task<(bool Success, string? Error, TelegramVerificationMessageCandidate? Candidate)> WaitForLiveReplyAsync(
+        int accountId,
+        AccountTelegramToolsService.ResolvedChatTarget target,
+        int sentMessageId,
+        string? currentUsername,
+        int timeoutSeconds,
+        string? botUsername,
+        DateTimeOffset waitStartedAtUtc,
+        CancellationToken cancellationToken)
+    {
+        var allowedSenders = BuildAllowedSenders(target, botUsername);
+        var botUserId = TryGetBotUserId(target);
+
+        try
+        {
+            return await _accountTelegramTools.WaitForBotVerificationMessageAsync(
+                accountId,
+                target,
+                sentMessageId,
+                currentUsername,
+                timeoutSeconds,
+                messageFilter: update => IsLikelyBotReplyUpdate(update, sentMessageId, botUserId, botUsername, waitStartedAtUtc),
+                allowedSenderUsernames: allowedSenders,
+                restrictToAllowedUsernames: false,
+                stopOnUnmatchedMention: false,
+                cancellationToken: cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Live reply wait failed: accountId={AccountId}", accountId);
+            return (false, ex.Message, null);
+        }
+    }
+
+    private async Task<TelegramVerificationMessageCandidate?> WaitForHistoryReplyUntilAsync(
+        int accountId,
+        AccountTelegramToolsService.ResolvedChatTarget target,
+        int sentMessageId,
+        string? currentUsername,
+        DateTimeOffset waitStartedAtUtc,
+        string? botUsername,
+        int timeoutSeconds,
+        CancellationToken cancellationToken)
+    {
+        var deadlineUtc = waitStartedAtUtc.AddSeconds(Math.Max(timeoutSeconds, 3));
+        while (DateTimeOffset.UtcNow <= deadlineUtc)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var candidate = await TryReadRecentBotReplyFromHistoryAsync(
+                accountId,
+                target,
+                sentMessageId,
+                currentUsername,
+                waitStartedAtUtc,
+                botUsername,
+                cancellationToken);
+
+            if (candidate != null)
+                return candidate;
+
+            var remaining = deadlineUtc - DateTimeOffset.UtcNow;
+            if (remaining <= TimeSpan.Zero)
+                break;
+
+            await Task.Delay(
+                remaining < TimeSpan.FromMilliseconds(1200) ? remaining : TimeSpan.FromMilliseconds(1200),
+                cancellationToken);
+        }
+
+        return await TryReadRecentBotReplyFromHistoryAsync(
+            accountId,
+            target,
+            sentMessageId,
+            currentUsername,
+            waitStartedAtUtc,
+            botUsername,
+            cancellationToken);
+    }
+
     private async Task<TelegramVerificationMessageCandidate?> TryReadRecentBotReplyFromHistoryAsync(
         int accountId,
         AccountTelegramToolsService.ResolvedChatTarget target,
@@ -227,7 +344,7 @@ public sealed class BotCheckinTelegramCompatService
         try
         {
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
-            var history = await client.Messages_GetHistory(target.Peer, limit: 15);
+            var history = await client.Messages_GetHistory(target.Peer, limit: 20);
             var botUserId = TryGetBotUserId(target);
 
             foreach (var message in history.Messages.OfType<Message>().OrderBy(x => x.id))
@@ -237,7 +354,7 @@ public sealed class BotCheckinTelegramCompatService
                 if (message.id <= sentMessageId)
                     continue;
 
-                if (message.Date.ToUniversalTime() < waitStartedAtUtc.UtcDateTime.AddSeconds(-2))
+                if (message.Date.ToUniversalTime() < waitStartedAtUtc.UtcDateTime.AddSeconds(-3))
                     continue;
 
                 if (!IsLikelyBotReplyMessage(message, sentMessageId, botUserId, botUsername))
@@ -274,9 +391,13 @@ public sealed class BotCheckinTelegramCompatService
         TelegramAccountMessageUpdate update,
         int sentMessageId,
         long botUserId,
-        string? botUsername)
+        string? botUsername,
+        DateTimeOffset waitStartedAtUtc)
     {
         if (update.Message.id <= sentMessageId)
+            return false;
+
+        if (update.ReceivedAtUtc < waitStartedAtUtc.AddSeconds(-3))
             return false;
 
         if (!HasUsefulReplyContent(update.Text, update.Buttons.Count, update.HasVisualMedia))
@@ -349,14 +470,14 @@ public sealed class BotCheckinTelegramCompatService
             return existing;
 
         var account = await _accountManagement.GetAccountAsync(accountId)
-            ?? throw new InvalidOperationException($"账号不存在：{accountId}");
+            ?? throw new InvalidOperationException($"Account does not exist: {accountId}");
 
         var apiId = ResolveApiId(account);
         var apiHash = ResolveApiHash(account);
         var sessionKey = !string.IsNullOrWhiteSpace(account.ApiHash) ? account.ApiHash.Trim() : apiHash.Trim();
 
         if (string.IsNullOrWhiteSpace(account.SessionPath))
-            throw new InvalidOperationException("账号缺少 SessionPath，无法连接 Telegram。");
+            throw new InvalidOperationException("The account is missing SessionPath and cannot connect to Telegram.");
 
         var client = await _clientPool.GetOrCreateClientAsync(
             accountId: accountId,
@@ -374,7 +495,7 @@ public sealed class BotCheckinTelegramCompatService
             await client.LoginUserIfNeeded(reloginOnFailedResume: false);
 
         if (client.User == null)
-            throw new InvalidOperationException("账号未登录或 session 已失效，请重新登录该账号。");
+            throw new InvalidOperationException("The account is not logged in or the session is invalid. Please log in again.");
 
         return client;
     }
@@ -385,7 +506,7 @@ public sealed class BotCheckinTelegramCompatService
             return globalApiId;
         if (account.ApiId > 0)
             return account.ApiId;
-        throw new InvalidOperationException("未配置全局 ApiId，且账号缺少 ApiId。");
+        throw new InvalidOperationException("Global ApiId is not configured and the account ApiId is missing.");
     }
 
     private string ResolveApiHash(Account account)
@@ -395,7 +516,7 @@ public sealed class BotCheckinTelegramCompatService
             return global.Trim();
         if (!string.IsNullOrWhiteSpace(account.ApiHash))
             return account.ApiHash.Trim();
-        throw new InvalidOperationException("未配置全局 ApiHash，且账号缺少 ApiHash。");
+        throw new InvalidOperationException("Global ApiHash is not configured and the account ApiHash is missing.");
     }
 
     private static IReadOnlyList<string> BuildAllowedSenders(AccountTelegramToolsService.ResolvedChatTarget target, string? botUsername)
@@ -471,7 +592,7 @@ public sealed class BotCheckinTelegramCompatService
     {
         var value = (raw ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(value))
-            throw new InvalidOperationException("机器人用户名或链接不能为空。");
+            throw new InvalidOperationException("Bot username or link cannot be empty.");
 
         if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
         {
