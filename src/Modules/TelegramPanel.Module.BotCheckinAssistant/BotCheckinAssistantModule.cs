@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor;
 using TelegramPanel.Modules;
+using TelegramPanel.Module.BotCheckinAssistant.Services;
 
 namespace TelegramPanel.Module.BotCheckinAssistant;
 
@@ -11,7 +12,7 @@ public sealed class BotCheckinAssistantModule : ITelegramPanelModule, IModuleUiP
     {
         Id = "community.bot-checkin-assistant",
         Name = "机器人签到助手",
-        Version = "1.0.1",
+        Version = "1.0.2",
         Host = new HostCompatibility
         {
             Min = "1.0.0",
@@ -27,6 +28,7 @@ public sealed class BotCheckinAssistantModule : ITelegramPanelModule, IModuleUiP
     public void ConfigureServices(IServiceCollection services, ModuleHostContext context)
     {
         // 当前模块无需额外注册本地服务。
+        services.AddScoped<BotCheckinAssistantPresetStore>();
     }
 
     public void MapEndpoints(IEndpointRouteBuilder endpoints, ModuleHostContext context)
