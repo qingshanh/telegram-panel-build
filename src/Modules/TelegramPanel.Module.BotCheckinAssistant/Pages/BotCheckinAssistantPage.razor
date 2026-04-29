@@ -328,6 +328,10 @@
                       Variant="Variant.Outlined"
                       Lines="12"
                       ReadOnly="true" />
+        @if (!string.IsNullOrWhiteSpace(previewRow.ReadStateSummary))
+        {
+            <MudText Typo="Typo.body2" Class="mt-2">@($"{TextReplyReadStatePrefix}{previewRow.ReadStateSummary}")</MudText>
+        }
         @if (!string.IsNullOrWhiteSpace(previewRow.ResponseButtonsSummary))
         {
             <MudText Typo="Typo.body2" Class="mt-2">@($"{TextReplyButtonsPrefix}{previewRow.ResponseButtonsSummary}")</MudText>
@@ -388,6 +392,10 @@
                     <MudChip T="string" Size="Size.Small" Color="@(context.ResponseSuccess ? Color.Success : Color.Default)">
                         @(context.ResponseSuccess ? (context.MarkedAsRead ? TextReplyRead : TextReplyCaptured) : TextReplyNone)
                     </MudChip>
+                    @if (!string.IsNullOrWhiteSpace(context.ReadStateSummary))
+                    {
+                        <MudText Typo="Typo.caption" Class="mt-1">@context.ReadStateSummary</MudText>
+                    }
                 </MudTd>
                 <MudTd DataLabel="@TextResultReplyContent" Class="tp-wrap-cell">
                     <MudText Typo="Typo.body2">@ShortenMultiline(context.ResponseText, 220)</MudText>
@@ -528,6 +536,7 @@
     private const string TextReplyPreviewTitle = "\u56DE\u590D\u5168\u6587\uFF1A";
     private const string TextClose = "\u5173\u95ED";
     private const string TextReplyFullLabel = "\u5B8C\u6574\u56DE\u590D";
+    private const string TextReplyReadStatePrefix = "\u672A\u8BFB\u8BCA\u65AD\uFF1A";
     private const string TextReplyButtonsPrefix = "\u53EF\u70B9\u6309\u94AE\uFF1A";
     private const string TextCurrentViewTitle = "\u5F53\u524D\u67E5\u770B\uFF1A\u7B2C {0} \u6761";
     private const string TextSendSuccessCount = "\u53D1\u9001\u6210\u529F {0}";
@@ -547,6 +556,8 @@
     private const string TextReplyCaptured = "\u5DF2\u6355\u83B7";
     private const string TextReplyNone = "\u65E0";
     private const string TextViewFull = "\u67E5\u770B\u5168\u6587";
+    private const string TextReadStateFullyCleared = "\u672A\u8BFB\u72B6\u6001\u5DF2\u6E05\u9664";
+    private const string TextReadStateNotChecked = "\u672A\u6267\u884C\u672A\u8BFB\u68C0\u67E5";
     private const string TextHistoryTitle = "\u6267\u884C\u5386\u53F2";
     private const string TextHistoryTime = "\u65F6\u95F4";
     private const string TextHistoryStep = "\u811A\u672C\u884C";
@@ -1070,9 +1081,9 @@
                     currentStatusText = $"Finalizing read state for {BuildAccountLabel(account)}.";
                     StateHasChanged();
 
-                    var markedAsRead = await TryFinalizeAccountReadStateAsync(account.Id, currentRunConfig, cancellationToken);
-                    SetBufferedReadStatusForAccount(account.Id, markedAsRead);
-                    if (!markedAsRead)
+                    var snapshot = await TryFinalizeAccountReadStateAsync(account.Id, currentRunConfig, cancellationToken);
+                    SetBufferedReadStatusForAccount(account.Id, snapshot);
+                    if (snapshot is { IsMarkedAsRead: false })
                         Snackbar.Add($"{BuildAccountLabel(account)} reply was captured, but unread state was not fully cleared.", Severity.Warning);
                 }
 
@@ -1257,16 +1268,20 @@
             }
 
             var markedAsRead = followUp.MarkedAsRead;
+            string? readStateSummary = followUp.MarkedAsRead ? TextReadStateFullyCleared : null;
             if (config.MarkRepliesAsRead)
             {
                 currentStatusText = $"Finalizing read state for {row.AccountLabel}.";
                 StateHasChanged();
-                markedAsRead = await TryFinalizeAccountReadStateAsync(accountId, config, CancellationToken.None);
-                if (!markedAsRead)
+                var snapshot = await TryFinalizeAccountReadStateAsync(accountId, config, CancellationToken.None);
+                markedAsRead = snapshot?.IsMarkedAsRead == true;
+                readStateSummary = BuildReadStateSummary(snapshot);
+                if (snapshot is { IsMarkedAsRead: false })
                     Snackbar.Add($"{row.AccountLabel} reply was captured, but unread state was not fully cleared.", Severity.Warning);
             }
 
             ApplyCandidateToResult(row, followUp.Candidate, markedAsRead);
+            row.ReadStateSummary = readStateSummary;
             row.Error = null;
             UpdateBufferedRow(row);
             if (previewRow?.AccountId == row.AccountId)
@@ -1362,28 +1377,28 @@
             currentStatusText = $"Finalizing read state for {row.AccountLabel}.";
             StateHasChanged();
 
-            var markedAsRead = await TryFinalizeAccountReadStateAsync(row.AccountId, config, cancellationToken);
-            SetBufferedRowReadStatus(stepIndex, row.AccountId, markedAsRead);
-            if (!markedAsRead)
+            var snapshot = await TryFinalizeAccountReadStateAsync(row.AccountId, config, cancellationToken);
+            SetBufferedRowReadStatus(stepIndex, row.AccountId, snapshot);
+            if (snapshot is not { IsMarkedAsRead: true })
                 failedCount++;
         }
 
         return failedCount;
     }
 
-    private async Task<bool> TryFinalizeAccountReadStateAsync(int accountId, BotCheckinTaskConfig config, CancellationToken cancellationToken)
+    private async Task<BotChatReadStateSnapshot?> TryFinalizeAccountReadStateAsync(int accountId, BotCheckinTaskConfig config, CancellationToken cancellationToken)
     {
         if (!config.MarkRepliesAsRead || !resolvedTargets.TryGetValue(accountId, out var target))
-            return false;
+            return null;
 
-        return await BotCompat.TryFinalizeChatAsReadAsync(
+        return await BotCompat.FinalizeChatReadStateAsync(
             accountId,
             target,
             settleSeconds: 5,
             cancellationToken: cancellationToken);
     }
 
-    private void SetBufferedRowReadStatus(int stepIndex, int accountId, bool markedAsRead)
+    private void SetBufferedRowReadStatus(int stepIndex, int accountId, BotChatReadStateSnapshot? snapshot)
     {
         if (!stepResultBuffers.TryGetValue(stepIndex, out var buffer))
             return;
@@ -1391,7 +1406,8 @@
         var changed = false;
         foreach (var row in buffer.Where(x => x.AccountId == accountId && x.ResponseSuccess))
         {
-            row.MarkedAsRead = markedAsRead;
+            row.MarkedAsRead = snapshot?.IsMarkedAsRead == true;
+            row.ReadStateSummary = BuildReadStateSummary(snapshot);
             changed = true;
         }
 
@@ -1405,19 +1421,23 @@
         }
 
         if (previewRow?.AccountId == accountId && previewRow.ResponseSuccess)
-            previewRow.MarkedAsRead = markedAsRead;
+        {
+            previewRow.MarkedAsRead = snapshot?.IsMarkedAsRead == true;
+            previewRow.ReadStateSummary = BuildReadStateSummary(snapshot);
+        }
 
         RefreshHistory();
     }
 
-    private void SetBufferedReadStatusForAccount(int accountId, bool markedAsRead)
+    private void SetBufferedReadStatusForAccount(int accountId, BotChatReadStateSnapshot? snapshot)
     {
         var changed = false;
         foreach (var entry in stepResultBuffers)
         {
             foreach (var row in entry.Value.Where(x => x.AccountId == accountId && x.ResponseSuccess))
             {
-                row.MarkedAsRead = markedAsRead;
+                row.MarkedAsRead = snapshot?.IsMarkedAsRead == true;
+                row.ReadStateSummary = BuildReadStateSummary(snapshot);
                 changed = true;
             }
         }
@@ -1432,7 +1452,10 @@
         }
 
         if (previewRow?.AccountId == accountId && previewRow.ResponseSuccess)
-            previewRow.MarkedAsRead = markedAsRead;
+        {
+            previewRow.MarkedAsRead = snapshot?.IsMarkedAsRead == true;
+            previewRow.ReadStateSummary = BuildReadStateSummary(snapshot);
+        }
 
         RefreshHistory();
     }
@@ -1460,6 +1483,47 @@
         row.ResponseButtonsSummary = BuildButtonsSummary(candidate);
         row.ResponseButtons = candidate.Buttons.ToList();
         row.MarkedAsRead = markAsRead;
+        row.ReadStateSummary = markAsRead ? TextReadStateFullyCleared : null;
+    }
+
+    private static string BuildReadStateSummary(BotChatReadStateSnapshot? snapshot)
+    {
+        if (snapshot == null)
+            return TextReadStateNotChecked;
+
+        if (snapshot.IsMarkedAsRead)
+            return TextReadStateFullyCleared;
+
+        var parts = new List<string>();
+        if (snapshot.DialogFound)
+        {
+            if (snapshot.DialogUnreadCount > 0)
+                parts.Add($"对话未读 {snapshot.DialogUnreadCount}");
+            if (snapshot.DialogUnreadMentions > 0)
+                parts.Add($"提及未读 {snapshot.DialogUnreadMentions}");
+            if (snapshot.DialogTopMessageId > 0)
+                parts.Add($"顶部消息 {snapshot.DialogTopMessageId}");
+            if (snapshot.DialogReadInboxMaxId > 0)
+                parts.Add($"已读至 {snapshot.DialogReadInboxMaxId}");
+        }
+        else
+        {
+            parts.Add("未定位到对话状态");
+        }
+
+        if (snapshot.RecentUnreadCount > 0)
+            parts.Add($"最近未读 {snapshot.RecentUnreadCount}");
+        if (snapshot.RecentUnreadMediaCount > 0)
+            parts.Add($"媒体未读 {snapshot.RecentUnreadMediaCount}");
+        if (snapshot.RecentMentionCount > 0)
+            parts.Add($"最近提及 {snapshot.RecentMentionCount}");
+        if (snapshot.RecentUnreadMessageIds.Count > 0)
+            parts.Add($"消息ID {string.Join(",", snapshot.RecentUnreadMessageIds)}");
+
+        if (parts.Count == 0)
+            parts.Add("仍有未读，但暂未定位到具体类型");
+
+        return string.Join(" | ", parts);
     }
 
     private bool MatchesAccountFilter(Account account)
@@ -1617,6 +1681,7 @@
         public int ResponseMessageId { get; set; }
         public string? ResponseText { get; set; }
         public string? ResponseButtonsSummary { get; set; }
+        public string? ReadStateSummary { get; set; }
         public List<TelegramInlineButtonOption> ResponseButtons { get; set; } = new();
         public string? Error { get; set; }
 
@@ -1632,6 +1697,7 @@
                 ResponseMessageId = ResponseMessageId,
                 ResponseText = ResponseText,
                 ResponseButtonsSummary = ResponseButtonsSummary,
+                ReadStateSummary = ReadStateSummary,
                 ResponseButtons = ResponseButtons.Select(x => new TelegramInlineButtonOption(x.Index, x.Text, x.CallbackData.ToArray())).ToList(),
                 Error = Error
             };

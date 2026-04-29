@@ -11,6 +11,20 @@ using WTelegram;
 
 namespace TelegramPanel.Module.BotCheckinAssistant.Services;
 
+public sealed record BotChatReadStateSnapshot(
+    string PeerType,
+    int ReadUpToMessageId,
+    bool DialogFound,
+    int DialogUnreadCount,
+    int DialogUnreadMentions,
+    int DialogTopMessageId,
+    int DialogReadInboxMaxId,
+    int RecentUnreadCount,
+    int RecentUnreadMediaCount,
+    int RecentMentionCount,
+    IReadOnlyList<int> RecentUnreadMessageIds,
+    bool IsMarkedAsRead);
+
 public sealed class BotCheckinTelegramCompatService
 {
     private readonly AccountManagementService _accountManagement;
@@ -230,6 +244,16 @@ public sealed class BotCheckinTelegramCompatService
         int settleSeconds = 5,
         CancellationToken cancellationToken = default)
     {
+        var snapshot = await FinalizeChatReadStateAsync(accountId, target, settleSeconds, cancellationToken);
+        return snapshot.IsMarkedAsRead;
+    }
+
+    public async Task<BotChatReadStateSnapshot> FinalizeChatReadStateAsync(
+        int accountId,
+        AccountTelegramToolsService.ResolvedChatTarget target,
+        int settleSeconds = 5,
+        CancellationToken cancellationToken = default)
+    {
         try
         {
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
@@ -252,21 +276,26 @@ public sealed class BotCheckinTelegramCompatService
                 await Task.Delay(TimeSpan.FromMilliseconds(900), cancellationToken);
             }
 
-            var finalized = await IsChatMarkedAsReadAsync(client, target, readUpToMessageId, cancellationToken);
-            if (!finalized)
+            var snapshot = await InspectChatReadStateAsync(client, target, readUpToMessageId, cancellationToken);
+            if (!snapshot.IsMarkedAsRead)
             {
-                var unreadContentIds = await CollectUnreadContentMessageIdsAsync(client, target, cancellationToken);
-                var unreadMessagesDetected = await HasUnreadMessagesInRecentHistoryAsync(client, target, cancellationToken);
                 _logger.LogInformation(
-                    "TryFinalizeChatAsReadAsync did not fully clear unread state: accountId={AccountId}, peerType={PeerType}, latestMessageId={LatestMessageId}, unreadMessagesDetected={UnreadMessagesDetected}, unreadContentCount={UnreadContentCount}",
+                    "TryFinalizeChatAsReadAsync did not fully clear unread state: accountId={AccountId}, peerType={PeerType}, latestMessageId={LatestMessageId}, dialogFound={DialogFound}, dialogUnreadCount={DialogUnreadCount}, dialogUnreadMentions={DialogUnreadMentions}, dialogTopMessageId={DialogTopMessageId}, dialogReadInboxMaxId={DialogReadInboxMaxId}, recentUnreadCount={RecentUnreadCount}, recentUnreadMediaCount={RecentUnreadMediaCount}, recentMentionCount={RecentMentionCount}, recentUnreadMessageIds={RecentUnreadMessageIds}",
                     accountId,
-                    target.Peer.GetType().Name,
-                    readUpToMessageId,
-                    unreadMessagesDetected,
-                    unreadContentIds.Count);
+                    snapshot.PeerType,
+                    snapshot.ReadUpToMessageId,
+                    snapshot.DialogFound,
+                    snapshot.DialogUnreadCount,
+                    snapshot.DialogUnreadMentions,
+                    snapshot.DialogTopMessageId,
+                    snapshot.DialogReadInboxMaxId,
+                    snapshot.RecentUnreadCount,
+                    snapshot.RecentUnreadMediaCount,
+                    snapshot.RecentMentionCount,
+                    string.Join(",", snapshot.RecentUnreadMessageIds));
             }
 
-            return finalized;
+            return snapshot;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -277,7 +306,19 @@ public sealed class BotCheckinTelegramCompatService
             _logger.LogDebug(ex, "TryFinalizeChatAsReadAsync failed: accountId={AccountId}", accountId);
         }
 
-        return false;
+        return new BotChatReadStateSnapshot(
+            target.Peer.GetType().Name,
+            0,
+            DialogFound: false,
+            DialogUnreadCount: 0,
+            DialogUnreadMentions: 0,
+            DialogTopMessageId: 0,
+            DialogReadInboxMaxId: 0,
+            RecentUnreadCount: 0,
+            RecentUnreadMediaCount: 0,
+            RecentMentionCount: 0,
+            RecentUnreadMessageIds: Array.Empty<int>(),
+            IsMarkedAsRead: false);
     }
 
     private async Task<(bool Success, string? Error, TelegramVerificationMessageCandidate? Candidate)> WaitForLiveReplyAsync(
@@ -535,8 +576,9 @@ public sealed class BotCheckinTelegramCompatService
 
             var readHistoryInvoked = await TryReadHistoryAsync(client, target, readUpToMessageId, cancellationToken);
             var readMentionsInvoked = await TryReadMentionsAsync(client, target, cancellationToken);
+            var readReactionsInvoked = await TryReadReactionsAsync(client, target, cancellationToken);
             var readContentsInvoked = await TryReadUnreadContentsAsync(client, target, cancellationToken);
-            invokedAny = invokedAny || readHistoryInvoked || readMentionsInvoked || readContentsInvoked;
+            invokedAny = invokedAny || readHistoryInvoked || readMentionsInvoked || readReactionsInvoked || readContentsInvoked;
 
             if (invokedAny && await IsChatMarkedAsReadAsync(client, target, readUpToMessageId, cancellationToken))
                 return true;
@@ -580,6 +622,18 @@ public sealed class BotCheckinTelegramCompatService
         return await TryInvokeMethodAsync(
             client,
             "Messages_ReadMentions",
+            target.Peer,
+            cancellationToken);
+    }
+
+    private static async Task<bool> TryReadReactionsAsync(
+        Client client,
+        AccountTelegramToolsService.ResolvedChatTarget target,
+        CancellationToken cancellationToken)
+    {
+        return await TryInvokeMethodAsync(
+            client,
+            "Messages_ReadReactions",
             target.Peer,
             cancellationToken);
     }
@@ -788,50 +842,26 @@ public sealed class BotCheckinTelegramCompatService
         int readUpToMessageId,
         CancellationToken cancellationToken)
     {
-        try
-        {
-            if (await HasUnreadMessagesInRecentHistoryAsync(client, target, cancellationToken))
-                return false;
-
-            await Task.Delay(250, cancellationToken);
-            var dialogs = await client.Messages_GetAllDialogs();
-            foreach (var dialog in dialogs.Dialogs)
-            {
-                var peer = GetMemberValue(dialog, "peer", "Peer");
-                if (!IsSamePeerObject(peer, target.Peer))
-                    continue;
-
-                var unreadCount = GetIntMemberValue(dialog, "unread_count", "UnreadCount");
-                var unreadMentions = GetIntMemberValue(dialog, "unread_mentions_count", "UnreadMentionsCount");
-                var topMessageId = GetIntMemberValue(dialog, "top_message", "TopMessage");
-                var readInboxMaxId = GetIntMemberValue(dialog, "read_inbox_max_id", "ReadInboxMaxId");
-
-                if (unreadCount <= 0 && unreadMentions <= 0)
-                    return true;
-
-                if (topMessageId > 0 && readInboxMaxId > 0 && readInboxMaxId >= topMessageId)
-                    return true;
-
-                return topMessageId > 0 && topMessageId <= readUpToMessageId && unreadCount <= 0;
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch
-        {
-            // ignore verification failure
-        }
-
-        return false;
+        var snapshot = await InspectChatReadStateAsync(client, target, readUpToMessageId, cancellationToken);
+        return snapshot.IsMarkedAsRead;
     }
 
-    private static async Task<bool> HasUnreadMessagesInRecentHistoryAsync(
+    private static async Task<BotChatReadStateSnapshot> InspectChatReadStateAsync(
         Client client,
         AccountTelegramToolsService.ResolvedChatTarget target,
+        int readUpToMessageId,
         CancellationToken cancellationToken)
     {
+        var recentUnreadCount = 0;
+        var recentUnreadMediaCount = 0;
+        var recentMentionCount = 0;
+        var recentUnreadMessageIds = new List<int>();
+        var dialogFound = false;
+        var dialogUnreadCount = 0;
+        var dialogUnreadMentions = 0;
+        var dialogTopMessageId = 0;
+        var dialogReadInboxMaxId = 0;
+
         try
         {
             var history = await client.Messages_GetHistory(target.Peer, limit: 12);
@@ -842,12 +872,35 @@ public sealed class BotCheckinTelegramCompatService
                 if (GetBooleanMemberValue(message, "out", "Out"))
                     continue;
 
-                if (GetBooleanMemberValue(message, "unread", "Unread")
-                    || GetBooleanMemberValue(message, "media_unread", "MediaUnread")
-                    || GetBooleanMemberValue(message, "mentioned", "Mentioned"))
-                {
-                    return true;
-                }
+                var isUnread = GetBooleanMemberValue(message, "unread", "Unread");
+                var hasUnreadMedia = GetBooleanMemberValue(message, "media_unread", "MediaUnread");
+                var isMentioned = GetBooleanMemberValue(message, "mentioned", "Mentioned");
+
+                if (isUnread)
+                    recentUnreadCount++;
+                if (hasUnreadMedia)
+                    recentUnreadMediaCount++;
+                if (isMentioned)
+                    recentMentionCount++;
+
+                if ((isUnread || hasUnreadMedia || isMentioned) && message.id > 0)
+                    recentUnreadMessageIds.Add(message.id);
+            }
+
+            await Task.Delay(250, cancellationToken);
+            var dialogs = await client.Messages_GetAllDialogs();
+            foreach (var dialog in dialogs.Dialogs)
+            {
+                var peer = GetMemberValue(dialog, "peer", "Peer");
+                if (!IsSamePeerObject(peer, target.Peer))
+                    continue;
+
+                dialogFound = true;
+                dialogUnreadCount = GetIntMemberValue(dialog, "unread_count", "UnreadCount");
+                dialogUnreadMentions = GetIntMemberValue(dialog, "unread_mentions_count", "UnreadMentionsCount");
+                dialogTopMessageId = GetIntMemberValue(dialog, "top_message", "TopMessage");
+                dialogReadInboxMaxId = GetIntMemberValue(dialog, "read_inbox_max_id", "ReadInboxMaxId");
+                break;
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -859,7 +912,28 @@ public sealed class BotCheckinTelegramCompatService
             // ignore verification failure
         }
 
-        return false;
+        var hasRecentUnread = recentUnreadCount > 0 || recentUnreadMediaCount > 0 || recentMentionCount > 0;
+        var dialogLooksRead = !dialogFound
+            || (dialogUnreadCount <= 0
+                && dialogUnreadMentions <= 0
+                && (dialogTopMessageId <= 0
+                    || dialogReadInboxMaxId <= 0
+                    || dialogReadInboxMaxId >= dialogTopMessageId
+                    || dialogTopMessageId <= readUpToMessageId));
+
+        return new BotChatReadStateSnapshot(
+            target.Peer.GetType().Name,
+            readUpToMessageId,
+            dialogFound,
+            dialogUnreadCount,
+            dialogUnreadMentions,
+            dialogTopMessageId,
+            dialogReadInboxMaxId,
+            recentUnreadCount,
+            recentUnreadMediaCount,
+            recentMentionCount,
+            recentUnreadMessageIds.Take(8).ToArray(),
+            IsMarkedAsRead: dialogLooksRead && !hasRecentUnread);
     }
 
     private static bool IsSamePeerObject(object? left, object? right)
