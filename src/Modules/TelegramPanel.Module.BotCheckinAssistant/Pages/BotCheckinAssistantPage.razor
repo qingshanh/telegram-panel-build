@@ -964,22 +964,39 @@
                 }
             }
 
+            var unreadFinalizeFailures = 0;
             if (currentRunConfig.MarkRepliesAsRead)
             {
-                await FinalizeReadStateForStepAsync(stepIndex, currentRunConfig, cancellationToken);
+                unreadFinalizeFailures = await FinalizeReadStateForStepAsync(stepIndex, currentRunConfig, cancellationToken);
             }
 
             currentStepIndex = Math.Max(currentStepIndex, stepIndex);
             if (stepIndex >= workflowMessages.Count - 1)
             {
                 workflowActive = false;
-                currentStatusText = "All script messages completed.";
-                Snackbar.Add("All script messages completed.", Severity.Success);
+                if (unreadFinalizeFailures > 0)
+                {
+                    currentStatusText = $"All script messages completed, but {unreadFinalizeFailures} accounts were not fully marked as read.";
+                    Snackbar.Add(currentStatusText, Severity.Warning);
+                }
+                else
+                {
+                    currentStatusText = "All script messages completed.";
+                    Snackbar.Add("All script messages completed.", Severity.Success);
+                }
             }
             else
             {
-                currentStatusText = $"Step {stepIndex + 1} finished. Review replies before continuing.";
-                Snackbar.Add($"Step {stepIndex + 1} finished. Review replies before continuing.", Severity.Info);
+                if (unreadFinalizeFailures > 0)
+                {
+                    currentStatusText = $"Step {stepIndex + 1} finished, but {unreadFinalizeFailures} accounts were not fully marked as read.";
+                    Snackbar.Add(currentStatusText, Severity.Warning);
+                }
+                else
+                {
+                    currentStatusText = $"Step {stepIndex + 1} finished. Review replies before continuing.";
+                    Snackbar.Add($"Step {stepIndex + 1} finished. Review replies before continuing.", Severity.Info);
+                }
             }
         }
         catch (OperationCanceledException) when (runCts?.IsCancellationRequested == true)
@@ -1055,6 +1072,8 @@
 
                     var markedAsRead = await TryFinalizeAccountReadStateAsync(account.Id, currentRunConfig, cancellationToken);
                     SetBufferedReadStatusForAccount(account.Id, markedAsRead);
+                    if (!markedAsRead)
+                        Snackbar.Add($"{BuildAccountLabel(account)} reply was captured, but unread state was not fully cleared.", Severity.Warning);
                 }
 
                 if (accountIndex < selectedAccounts.Count - 1)
@@ -1243,6 +1262,8 @@
                 currentStatusText = $"Finalizing read state for {row.AccountLabel}.";
                 StateHasChanged();
                 markedAsRead = await TryFinalizeAccountReadStateAsync(accountId, config, CancellationToken.None);
+                if (!markedAsRead)
+                    Snackbar.Add($"{row.AccountLabel} reply was captured, but unread state was not fully cleared.", Severity.Warning);
             }
 
             ApplyCandidateToResult(row, followUp.Candidate, markedAsRead);
@@ -1324,10 +1345,12 @@
         RefreshHistory();
     }
 
-    private async Task FinalizeReadStateForStepAsync(int stepIndex, BotCheckinTaskConfig config, CancellationToken cancellationToken)
+    private async Task<int> FinalizeReadStateForStepAsync(int stepIndex, BotCheckinTaskConfig config, CancellationToken cancellationToken)
     {
         if (!config.MarkRepliesAsRead || !stepResultBuffers.TryGetValue(stepIndex, out var buffer))
-            return;
+            return 0;
+
+        var failedCount = 0;
 
         foreach (var row in buffer
                      .Where(x => x.ResponseSuccess && resolvedTargets.ContainsKey(x.AccountId))
@@ -1341,7 +1364,11 @@
 
             var markedAsRead = await TryFinalizeAccountReadStateAsync(row.AccountId, config, cancellationToken);
             SetBufferedRowReadStatus(stepIndex, row.AccountId, markedAsRead);
+            if (!markedAsRead)
+                failedCount++;
         }
+
+        return failedCount;
     }
 
     private async Task<bool> TryFinalizeAccountReadStateAsync(int accountId, BotCheckinTaskConfig config, CancellationToken cancellationToken)
