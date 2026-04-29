@@ -210,25 +210,7 @@ public sealed class BotCheckinTelegramCompatService
         try
         {
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
-            var latestMessageId = await TryGetLatestMessageIdAsync(client, target, cancellationToken);
-            var readUpToMessageId = Math.Max(maxMessageId, latestMessageId);
-
-            var invoked = await TryInvokePeerMethodAsync(client, "Messages_ReadHistory", target.Peer, readUpToMessageId, cancellationToken);
-            await TryInvokePeerMethodAsync(client, "Messages_ReadMentions", target.Peer, null, cancellationToken);
-
-            if (!invoked)
-                return false;
-
-            if (await IsChatMarkedAsReadAsync(client, target, readUpToMessageId, cancellationToken))
-                return true;
-
-            if (latestMessageId > readUpToMessageId)
-            {
-                invoked = await TryInvokePeerMethodAsync(client, "Messages_ReadHistory", target.Peer, latestMessageId, cancellationToken);
-                await TryInvokePeerMethodAsync(client, "Messages_ReadMentions", target.Peer, null, cancellationToken);
-                if (invoked && await IsChatMarkedAsReadAsync(client, target, latestMessageId, cancellationToken))
-                    return true;
-            }
+            return await DrainUnreadForChatAsync(client, target, maxMessageId, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -479,6 +461,36 @@ public sealed class BotCheckinTelegramCompatService
         }
     }
 
+    private static async Task<bool> DrainUnreadForChatAsync(
+        Client client,
+        AccountTelegramToolsService.ResolvedChatTarget target,
+        int maxMessageId,
+        CancellationToken cancellationToken)
+    {
+        var readUpToMessageId = Math.Max(0, maxMessageId);
+        var invokedAny = false;
+
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var latestMessageId = await TryGetLatestMessageIdAsync(client, target, cancellationToken);
+            readUpToMessageId = Math.Max(readUpToMessageId, latestMessageId);
+
+            var readHistoryInvoked = await TryInvokePeerMethodAsync(client, "Messages_ReadHistory", target.Peer, readUpToMessageId, cancellationToken);
+            var readMentionsInvoked = await TryInvokePeerMethodAsync(client, "Messages_ReadMentions", target.Peer, readUpToMessageId, cancellationToken);
+            invokedAny = invokedAny || readHistoryInvoked || readMentionsInvoked;
+
+            if (invokedAny && await IsChatMarkedAsReadAsync(client, target, readUpToMessageId, cancellationToken))
+                return true;
+
+            if (attempt < 4)
+                await Task.Delay(TimeSpan.FromMilliseconds(700), cancellationToken);
+        }
+
+        return invokedAny && await IsChatMarkedAsReadAsync(client, target, readUpToMessageId, cancellationToken);
+    }
+
     private static async Task<bool> TryInvokePeerMethodAsync(
         Client client,
         string methodName,
@@ -503,7 +515,7 @@ public sealed class BotCheckinTelegramCompatService
                 {
                     args[i] = peer;
                 }
-                else if ((parameter.ParameterType == typeof(int) || parameter.ParameterType == typeof(int?)) && maxMessageId.HasValue)
+                else if ((parameter.ParameterType == typeof(int) || parameter.ParameterType == typeof(int?)) && maxMessageId.HasValue && IsMessageIdParameter(parameter))
                 {
                     args[i] = maxMessageId.Value;
                 }
@@ -518,6 +530,10 @@ public sealed class BotCheckinTelegramCompatService
                 else if (Nullable.GetUnderlyingType(parameter.ParameterType) != null)
                 {
                     args[i] = null;
+                }
+                else if (parameter.ParameterType.IsValueType)
+                {
+                    args[i] = Activator.CreateInstance(parameter.ParameterType);
                 }
                 else
                 {
@@ -536,6 +552,17 @@ public sealed class BotCheckinTelegramCompatService
         }
 
         return false;
+    }
+
+    private static bool IsMessageIdParameter(ParameterInfo parameter)
+    {
+        var name = (parameter.Name ?? string.Empty).Trim();
+        return name.Equals("max_id", StringComparison.OrdinalIgnoreCase)
+               || name.Equals("maxId", StringComparison.OrdinalIgnoreCase)
+               || name.Equals("top_msg_id", StringComparison.OrdinalIgnoreCase)
+               || name.Equals("topMsgId", StringComparison.OrdinalIgnoreCase)
+               || name.Equals("msg_id", StringComparison.OrdinalIgnoreCase)
+               || name.Equals("msgId", StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<bool> IsChatMarkedAsReadAsync(
