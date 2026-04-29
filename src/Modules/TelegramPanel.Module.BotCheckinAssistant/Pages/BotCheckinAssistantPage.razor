@@ -891,21 +891,6 @@
 
         try
         {
-            if (stepIndex == 0 && autoStartBeforeFirstMessage)
-            {
-                var start = await AccountTelegramTools.StartExternalBotAsync(
-                    account.Id,
-                    botTarget,
-                    startParameter,
-                    cancellationToken,
-                    assumeBotUsername: true);
-                if (!start.Success)
-                {
-                    row.Error = start.Error ?? "发送 /start 失败。";
-                    return row;
-                }
-            }
-
             if (!resolvedTargets.TryGetValue(account.Id, out var target))
             {
                 var resolve = await BotCompat.ResolveExternalBotTargetAsync(
@@ -923,6 +908,42 @@
                 resolvedTargets[account.Id] = target;
                 if (!string.IsNullOrWhiteSpace(resolve.BotUsername))
                     resolvedBotUsernames[account.Id] = resolve.BotUsername;
+            }
+
+            var normalizedMessage = (message ?? string.Empty).Trim();
+            if (stepIndex == 0
+                && autoStartBeforeFirstMessage
+                && !string.Equals(normalizedMessage, "/start", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!string.IsNullOrWhiteSpace(startParameter))
+                {
+                    var start = await AccountTelegramTools.StartExternalBotAsync(
+                        account.Id,
+                        botTarget,
+                        startParameter,
+                        cancellationToken,
+                        assumeBotUsername: true);
+                    if (!start.Success)
+                    {
+                        row.Error = start.Error ?? "发送带参数 /start 失败。";
+                        return row;
+                    }
+                }
+                else
+                {
+                    var plainStart = await AccountTelegramTools.SendMessageToResolvedChatAsync(
+                        account.Id,
+                        target,
+                        "/start",
+                        replyToMessageId: null,
+                        cancellationToken: cancellationToken);
+
+                    if (!plainStart.Success)
+                    {
+                        row.Error = plainStart.Error ?? "发送 /start 失败。";
+                        return row;
+                    }
+                }
             }
 
             var send = await AccountTelegramTools.SendMessageToResolvedChatAsync(

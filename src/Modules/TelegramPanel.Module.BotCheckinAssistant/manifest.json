@@ -1,7 +1,7 @@
 {
   "id": "community.bot-checkin-assistant",
   "name": "机器人签到助手",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "host": {
     "min": "1.0.0",
     "max": "2.0.0"

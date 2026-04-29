@@ -12,7 +12,7 @@ public sealed class BotCheckinAssistantModule : ITelegramPanelModule, IModuleUiP
     {
         Id = "community.bot-checkin-assistant",
         Name = "机器人签到助手",
-        Version = "1.1.0",
+        Version = "1.1.1",
         Host = new HostCompatibility
         {
             Min = "1.0.0",
