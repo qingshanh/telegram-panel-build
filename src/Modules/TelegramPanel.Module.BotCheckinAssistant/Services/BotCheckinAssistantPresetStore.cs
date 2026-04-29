@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 
@@ -371,7 +372,8 @@ public sealed class BotCheckinAssistantPresetStore
     {
         return node.ToJsonString(new JsonSerializerOptions(JsonSerializerDefaults.Web)
         {
-            WriteIndented = true
+            WriteIndented = true,
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver()
         });
     }
 }

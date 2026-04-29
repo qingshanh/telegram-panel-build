@@ -78,6 +78,7 @@ public sealed class BotCheckinTelegramCompatService
     {
         var waitStartedAtUtc = DateTimeOffset.UtcNow;
         var allowedSenders = BuildAllowedSenders(target, botUsername);
+        var botUserId = TryGetBotUserId(target);
 
         try
         {
@@ -87,9 +88,9 @@ public sealed class BotCheckinTelegramCompatService
                 sentMessageId,
                 currentUsername,
                 timeoutSeconds,
-                messageFilter: static _ => true,
+                messageFilter: update => IsLikelyBotReplyUpdate(update, sentMessageId, botUserId, botUsername),
                 allowedSenderUsernames: allowedSenders,
-                restrictToAllowedUsernames: allowedSenders.Count > 0,
+                restrictToAllowedUsernames: false,
                 stopOnUnmatchedMention: false,
                 cancellationToken: cancellationToken);
 
@@ -239,7 +240,7 @@ public sealed class BotCheckinTelegramCompatService
                 if (message.Date.ToUniversalTime() < waitStartedAtUtc.UtcDateTime.AddSeconds(-2))
                     continue;
 
-                if (!IsIncomingBotMessage(message, botUserId, botUsername))
+                if (!IsLikelyBotReplyMessage(message, sentMessageId, botUserId, botUsername))
                     continue;
 
                 var text = (message.message ?? string.Empty).Trim();
@@ -267,6 +268,76 @@ public sealed class BotCheckinTelegramCompatService
         }
 
         return null;
+    }
+
+    private static bool IsLikelyBotReplyUpdate(
+        TelegramAccountMessageUpdate update,
+        int sentMessageId,
+        long botUserId,
+        string? botUsername)
+    {
+        if (update.Message.id <= sentMessageId)
+            return false;
+
+        if (!HasUsefulReplyContent(update.Text, update.Buttons.Count, update.HasVisualMedia))
+            return false;
+
+        if (botUserId > 0 && update.SenderUserId.HasValue && update.SenderUserId.Value == botUserId)
+            return true;
+
+        if (!string.IsNullOrWhiteSpace(botUsername))
+        {
+            var normalizedBot = botUsername.Trim().TrimStart('@');
+            if (string.Equals((update.SenderUsername ?? string.Empty).Trim().TrimStart('@'), normalizedBot, StringComparison.OrdinalIgnoreCase)
+                || string.Equals((update.SenderChatUsername ?? string.Empty).Trim().TrimStart('@'), normalizedBot, StringComparison.OrdinalIgnoreCase)
+                || string.Equals((update.SenderPostAuthor ?? string.Empty).Trim().TrimStart('@'), normalizedBot, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        if (update.SenderIsBot)
+            return true;
+
+        if (!update.SenderUserId.HasValue && !update.SenderChatId.HasValue)
+            return true;
+
+        return update.ReplyToMessageId == sentMessageId;
+    }
+
+    private static bool IsLikelyBotReplyMessage(
+        Message message,
+        int sentMessageId,
+        long botUserId,
+        string? botUsername)
+    {
+        if (message.id <= sentMessageId)
+            return false;
+
+        var text = (message.message ?? string.Empty).Trim();
+        var buttons = ExtractInlineButtons(message);
+        if (!HasUsefulReplyContent(text, buttons.Count, message.media != null))
+            return false;
+
+        if (botUserId > 0 && message.from_id is PeerUser peerUser && peerUser.user_id == botUserId)
+            return true;
+
+        if (!string.IsNullOrWhiteSpace(botUsername)
+            && message.from_id is PeerUser
+            && string.Equals(botUsername.TrimStart('@'), ExtractPostAuthorOrUsername(message), StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (message.reply_to is MessageReplyHeader replyHeader && replyHeader.reply_to_msg_id == sentMessageId)
+            return true;
+
+        return message.from_id is null || message.from_id is PeerUser;
+    }
+
+    private static bool HasUsefulReplyContent(string? text, int buttonCount, bool hasVisualMedia)
+    {
+        return !string.IsNullOrWhiteSpace(text) || buttonCount > 0 || hasVisualMedia;
     }
 
     private async Task<Client> GetOrCreateConnectedClientAsync(int accountId, CancellationToken cancellationToken)
@@ -352,21 +423,6 @@ public sealed class BotCheckinTelegramCompatService
             return inputPeerUser.user_id;
 
         return long.TryParse(target.CanonicalId, out var parsed) ? parsed : 0;
-    }
-
-    private static bool IsIncomingBotMessage(Message message, long botUserId, string? botUsername)
-    {
-        if (botUserId > 0 && message.from_id is PeerUser peerUser && peerUser.user_id == botUserId)
-            return true;
-
-        if (!string.IsNullOrWhiteSpace(botUsername)
-            && message.from_id is PeerUser
-            && string.Equals(botUsername.TrimStart('@'), ExtractPostAuthorOrUsername(message), StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        return botUserId == 0 && message.from_id is PeerUser;
     }
 
     private static string ExtractPostAuthorOrUsername(Message message)
