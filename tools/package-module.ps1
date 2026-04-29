@@ -91,6 +91,12 @@ if ($IsLinux -or $IsMacOS)
 $dockerArgs += @(
     "-v", "${repoRoot}:/src",
     "-w", "/src",
+    "-e", "HOME=/tmp",
+    "-e", "DOTNET_CLI_HOME=/tmp",
+    "-e", "DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1",
+    "-e", "DOTNET_NOLOGO=1",
+    "-e", "DOTNET_CLI_TELEMETRY_OPTOUT=1",
+    "-e", "NUGET_PACKAGES=/tmp/.nuget/packages",
     "mcr.microsoft.com/dotnet/sdk:8.0",
     "dotnet", "publish", "$projectContainer", "-c", "Release", "-o", "$publishContainer", "/p:UseAppHost=false"
 )

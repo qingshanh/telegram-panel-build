@@ -1147,7 +1147,7 @@
                 send.MessageId.Value,
                 account.Username,
                 config.WaitTimeoutSeconds,
-                resolvedBotUsernames.GetValueOrDefault(account.Id),
+                resolvedBotUsernames.TryGetValue(account.Id, out var botUsername) ? botUsername : null,
                 config.MarkRepliesAsRead,
                 cancellationToken);
 
@@ -1213,7 +1213,7 @@
                 row.ResponseMessageId,
                 account.Username,
                 config.WaitTimeoutSeconds,
-                resolvedBotUsernames.GetValueOrDefault(accountId),
+                resolvedBotUsernames.TryGetValue(accountId, out var botUsername) ? botUsername : null,
                 config.MarkRepliesAsRead);
 
             if (!followUp.Success || followUp.Candidate == null)
@@ -1311,7 +1311,7 @@
             {
                 StepNumber = stepIndex + 1,
                 Message = workflowMessages.ElementAtOrDefault(stepIndex) ?? string.Empty,
-                ExecutedAt = stepExecutionTimes.GetValueOrDefault(stepIndex, DateTimeOffset.Now),
+                ExecutedAt = stepExecutionTimes.TryGetValue(stepIndex, out var executedAt) ? executedAt : DateTimeOffset.Now,
                 Results = stepResultBuffers[stepIndex].OrderBy(x => x.AccountId).Select(x => x.Clone()).ToList()
             });
         }

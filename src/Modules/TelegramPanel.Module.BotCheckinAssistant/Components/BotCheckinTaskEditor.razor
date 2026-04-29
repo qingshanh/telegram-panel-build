@@ -37,7 +37,6 @@
                               @bind-Value:after="PublishDraftAsync"
                               Label="@TextTaskNameLabel"
                               Variant="Variant.Outlined"
-                              Dense="true"
                               Placeholder="@TextTaskNamePlaceholder" />
             </MudItem>
         </MudGrid>
@@ -46,7 +45,6 @@
                       @bind-Value:after="PublishDraftAsync"
                       Label="@TextBotTargetLabel"
                       Variant="Variant.Outlined"
-                      Dense="true"
                       Placeholder="@TextBotTargetPlaceholder" />
 
         <MudGrid>
@@ -54,8 +52,7 @@
                 <MudTextField @bind-Value="startParameter"
                               @bind-Value:after="PublishDraftAsync"
                               Label="@TextStartParameterLabel"
-                              Variant="Variant.Outlined"
-                              Dense="true" />
+                              Variant="Variant.Outlined" />
             </MudItem>
             <MudItem xs="12" md="3">
                 <MudNumericField T="int"
@@ -63,7 +60,6 @@
                                  @bind-Value:after="PublishDraftAsync"
                                  Label="@TextWaitReplyLabel"
                                  Variant="Variant.Outlined"
-                                 Dense="true"
                                  Min="3"
                                  Max="300" />
             </MudItem>
@@ -73,7 +69,6 @@
                                  @bind-Value:after="PublishDraftAsync"
                                  Label="@TextDelayLabel"
                                  Variant="Variant.Outlined"
-                                 Dense="true"
                                  Min="0"
                                  Max="600" />
             </MudItem>
@@ -106,7 +101,6 @@
                                      @bind-Value:after="PublishDraftAsync"
                                      Label="@TextRandomDelayMin"
                                      Variant="Variant.Outlined"
-                                     Dense="true"
                                      Min="0"
                                      Max="600" />
                 </MudItem>
@@ -116,7 +110,6 @@
                                      @bind-Value:after="PublishDraftAsync"
                                      Label="@TextRandomDelayMax"
                                      Variant="Variant.Outlined"
-                                     Dense="true"
                                      Min="0"
                                      Max="600" />
                 </MudItem>
@@ -147,7 +140,6 @@
                       @bind-Value:after="PublishDraftAsync"
                       Label="@TextSearchAccountLabel"
                       Variant="Variant.Outlined"
-                      Dense="true"
                       Adornment="Adornment.Start"
                       AdornmentIcon="@Icons.Material.Filled.Search"
                       Placeholder="@TextSearchAccountPlaceholder" />

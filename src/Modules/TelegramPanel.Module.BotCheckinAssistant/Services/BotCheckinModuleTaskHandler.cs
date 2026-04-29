@@ -177,7 +177,7 @@ public sealed class BotCheckinModuleTaskHandler : IModuleTaskHandler
             send.MessageId.Value,
             account.Username,
             config.WaitTimeoutSeconds,
-            resolvedBotUsernames.GetValueOrDefault(account.Id),
+            resolvedBotUsernames.TryGetValue(account.Id, out var botUsername) ? botUsername : null,
             config.MarkRepliesAsRead,
             cancellationToken);
 
