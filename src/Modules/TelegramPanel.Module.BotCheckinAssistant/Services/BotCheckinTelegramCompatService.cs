@@ -224,6 +224,48 @@ public sealed class BotCheckinTelegramCompatService
         return false;
     }
 
+    public async Task<bool> TryFinalizeChatAsReadAsync(
+        int accountId,
+        AccountTelegramToolsService.ResolvedChatTarget target,
+        int settleSeconds = 5,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
+            var deadlineUtc = DateTimeOffset.UtcNow.AddSeconds(Math.Clamp(settleSeconds, 1, 20));
+            var readUpToMessageId = 0;
+
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var latestMessageId = await TryGetLatestMessageIdAsync(client, target, cancellationToken);
+                readUpToMessageId = Math.Max(readUpToMessageId, latestMessageId);
+
+                if (readUpToMessageId > 0)
+                    await DrainUnreadForChatAsync(client, target, readUpToMessageId, cancellationToken);
+
+                if (DateTimeOffset.UtcNow >= deadlineUtc)
+                    break;
+
+                await Task.Delay(TimeSpan.FromMilliseconds(900), cancellationToken);
+            }
+
+            return await IsChatMarkedAsReadAsync(client, target, readUpToMessageId, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "TryFinalizeChatAsReadAsync failed: accountId={AccountId}", accountId);
+        }
+
+        return false;
+    }
+
     private async Task<(bool Success, string? Error, TelegramVerificationMessageCandidate? Candidate)> WaitForLiveReplyAsync(
         int accountId,
         AccountTelegramToolsService.ResolvedChatTarget target,
@@ -479,7 +521,8 @@ public sealed class BotCheckinTelegramCompatService
 
             var readHistoryInvoked = await TryInvokePeerMethodAsync(client, "Messages_ReadHistory", target.Peer, readUpToMessageId, cancellationToken);
             var readMentionsInvoked = await TryInvokePeerMethodAsync(client, "Messages_ReadMentions", target.Peer, readUpToMessageId, cancellationToken);
-            invokedAny = invokedAny || readHistoryInvoked || readMentionsInvoked;
+            var readReactionsInvoked = await TryInvokePeerMethodAsync(client, "Messages_ReadReactions", target.Peer, readUpToMessageId, cancellationToken);
+            invokedAny = invokedAny || readHistoryInvoked || readMentionsInvoked || readReactionsInvoked;
 
             if (invokedAny && await IsChatMarkedAsReadAsync(client, target, readUpToMessageId, cancellationToken))
                 return true;
@@ -545,10 +588,17 @@ public sealed class BotCheckinTelegramCompatService
             if (!valid)
                 continue;
 
-            var result = method.Invoke(client, args);
-            if (result is Task task)
-                await task;
-            return true;
+            try
+            {
+                var result = method.Invoke(client, args);
+                if (result is Task task)
+                    await task;
+                return true;
+            }
+            catch
+            {
+                // try the next overload or method name variant
+            }
         }
 
         return false;
@@ -573,6 +623,9 @@ public sealed class BotCheckinTelegramCompatService
     {
         try
         {
+            if (await HasUnreadMessagesInRecentHistoryAsync(client, target, cancellationToken))
+                return false;
+
             await Task.Delay(250, cancellationToken);
             var dialogs = await client.Messages_GetAllDialogs();
             foreach (var dialog in dialogs.Dialogs)
@@ -593,6 +646,41 @@ public sealed class BotCheckinTelegramCompatService
                     return true;
 
                 return topMessageId > 0 && topMessageId <= readUpToMessageId && unreadCount <= 0;
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            // ignore verification failure
+        }
+
+        return false;
+    }
+
+    private static async Task<bool> HasUnreadMessagesInRecentHistoryAsync(
+        Client client,
+        AccountTelegramToolsService.ResolvedChatTarget target,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var history = await client.Messages_GetHistory(target.Peer, limit: 12);
+            foreach (var message in history.Messages.OfType<Message>())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (GetBooleanMemberValue(message, "out", "Out"))
+                    continue;
+
+                if (GetBooleanMemberValue(message, "unread", "Unread")
+                    || GetBooleanMemberValue(message, "media_unread", "MediaUnread")
+                    || GetBooleanMemberValue(message, "mentioned", "Mentioned"))
+                {
+                    return true;
+                }
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -687,6 +775,20 @@ public sealed class BotCheckinTelegramCompatService
             long number => (int)number,
             short number => number,
             _ => 0
+        };
+    }
+
+    private static bool GetBooleanMemberValue(object instance, params string[] names)
+    {
+        var value = GetMemberValue(instance, names);
+        return value switch
+        {
+            bool booleanValue => booleanValue,
+            int number => number != 0,
+            long number => number != 0,
+            short number => number != 0,
+            byte number => number != 0,
+            _ => false
         };
     }
 

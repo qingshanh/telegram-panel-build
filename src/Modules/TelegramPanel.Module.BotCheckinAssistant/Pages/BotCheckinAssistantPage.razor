@@ -964,6 +964,11 @@
                 }
             }
 
+            if (currentRunConfig.MarkRepliesAsRead)
+            {
+                await FinalizeReadStateForStepAsync(stepIndex, currentRunConfig, cancellationToken);
+            }
+
             currentStepIndex = Math.Max(currentStepIndex, stepIndex);
             if (stepIndex >= workflowMessages.Count - 1)
             {
@@ -1041,6 +1046,15 @@
 
                     var row = await ExecuteAccountStepAsync(account, workflowMessages[stepIndex], stepIndex, currentRunConfig, cancellationToken);
                     AppendStepResult(stepIndex, row);
+                }
+
+                if (currentRunConfig.MarkRepliesAsRead)
+                {
+                    currentStatusText = $"Finalizing read state for {BuildAccountLabel(account)}.";
+                    StateHasChanged();
+
+                    var markedAsRead = await TryFinalizeAccountReadStateAsync(account.Id, currentRunConfig, cancellationToken);
+                    SetBufferedReadStatusForAccount(account.Id, markedAsRead);
                 }
 
                 if (accountIndex < selectedAccounts.Count - 1)
@@ -1223,7 +1237,15 @@
                 return;
             }
 
-            ApplyCandidateToResult(row, followUp.Candidate, followUp.MarkedAsRead);
+            var markedAsRead = followUp.MarkedAsRead;
+            if (config.MarkRepliesAsRead)
+            {
+                currentStatusText = $"Finalizing read state for {row.AccountLabel}.";
+                StateHasChanged();
+                markedAsRead = await TryFinalizeAccountReadStateAsync(accountId, config, CancellationToken.None);
+            }
+
+            ApplyCandidateToResult(row, followUp.Candidate, markedAsRead);
             row.Error = null;
             UpdateBufferedRow(row);
             if (previewRow?.AccountId == row.AccountId)
@@ -1299,6 +1321,92 @@
 
         currentStepResults.Clear();
         currentStepResults.AddRange(currentBuffer.OrderBy(x => x.AccountId).Select(x => x.Clone()));
+        RefreshHistory();
+    }
+
+    private async Task FinalizeReadStateForStepAsync(int stepIndex, BotCheckinTaskConfig config, CancellationToken cancellationToken)
+    {
+        if (!config.MarkRepliesAsRead || !stepResultBuffers.TryGetValue(stepIndex, out var buffer))
+            return;
+
+        foreach (var row in buffer
+                     .Where(x => x.ResponseSuccess && resolvedTargets.ContainsKey(x.AccountId))
+                     .OrderBy(x => x.AccountId)
+                     .ToList())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            currentStatusText = $"Finalizing read state for {row.AccountLabel}.";
+            StateHasChanged();
+
+            var markedAsRead = await TryFinalizeAccountReadStateAsync(row.AccountId, config, cancellationToken);
+            SetBufferedRowReadStatus(stepIndex, row.AccountId, markedAsRead);
+        }
+    }
+
+    private async Task<bool> TryFinalizeAccountReadStateAsync(int accountId, BotCheckinTaskConfig config, CancellationToken cancellationToken)
+    {
+        if (!config.MarkRepliesAsRead || !resolvedTargets.TryGetValue(accountId, out var target))
+            return false;
+
+        return await BotCompat.TryFinalizeChatAsReadAsync(
+            accountId,
+            target,
+            settleSeconds: 5,
+            cancellationToken: cancellationToken);
+    }
+
+    private void SetBufferedRowReadStatus(int stepIndex, int accountId, bool markedAsRead)
+    {
+        if (!stepResultBuffers.TryGetValue(stepIndex, out var buffer))
+            return;
+
+        var changed = false;
+        foreach (var row in buffer.Where(x => x.AccountId == accountId && x.ResponseSuccess))
+        {
+            row.MarkedAsRead = markedAsRead;
+            changed = true;
+        }
+
+        if (!changed)
+            return;
+
+        if (currentStepIndex == stepIndex)
+        {
+            currentStepResults.Clear();
+            currentStepResults.AddRange(buffer.OrderBy(x => x.AccountId).Select(x => x.Clone()));
+        }
+
+        if (previewRow?.AccountId == accountId && previewRow.ResponseSuccess)
+            previewRow.MarkedAsRead = markedAsRead;
+
+        RefreshHistory();
+    }
+
+    private void SetBufferedReadStatusForAccount(int accountId, bool markedAsRead)
+    {
+        var changed = false;
+        foreach (var entry in stepResultBuffers)
+        {
+            foreach (var row in entry.Value.Where(x => x.AccountId == accountId && x.ResponseSuccess))
+            {
+                row.MarkedAsRead = markedAsRead;
+                changed = true;
+            }
+        }
+
+        if (!changed)
+            return;
+
+        if (stepResultBuffers.TryGetValue(currentStepIndex, out var currentBuffer))
+        {
+            currentStepResults.Clear();
+            currentStepResults.AddRange(currentBuffer.OrderBy(x => x.AccountId).Select(x => x.Clone()));
+        }
+
+        if (previewRow?.AccountId == accountId && previewRow.ResponseSuccess)
+            previewRow.MarkedAsRead = markedAsRead;
+
         RefreshHistory();
     }
 

@@ -114,6 +114,16 @@ public sealed class BotCheckinModuleTaskHandler : IModuleTaskHandler
                     await host.UpdateProgressAsync(completed, failed, cancellationToken);
                 }
 
+                if (config.MarkRepliesAsRead && resolvedTargets.TryGetValue(account.Id, out var resolvedTarget))
+                {
+                    var markedAsRead = await botCompat.TryFinalizeChatAsReadAsync(
+                        account.Id,
+                        resolvedTarget,
+                        settleSeconds: 5,
+                        cancellationToken: cancellationToken);
+                    ApplyAccountReadState(runLog, account.Id, markedAsRead);
+                }
+
                 if (accountHadSuccessfulSend)
                     successfulAccountIds.Add(account.Id);
 
@@ -318,6 +328,12 @@ public sealed class BotCheckinModuleTaskHandler : IModuleTaskHandler
     {
         config.LastRunLog = runLog;
         await taskManagement.UpdateTaskConfigAsync(taskId, config.Serialize());
+    }
+
+    private static void ApplyAccountReadState(BotCheckinTaskRunLog runLog, int accountId, bool markedAsRead)
+    {
+        foreach (var entry in runLog.Entries.Where(x => x.AccountId == accountId && x.ReplyCaptured))
+            entry.ReplyMarkedAsRead = markedAsRead;
     }
 
     private static string BuildAccountLabel(Account account)
