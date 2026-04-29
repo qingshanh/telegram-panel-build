@@ -18,6 +18,7 @@ public sealed class BotCheckinTaskConfig
     public bool MarkRepliesAsRead { get; set; } = true;
     public string MessageScript { get; set; } = string.Empty;
     public List<int> SelectedAccountIds { get; set; } = new();
+    public BotCheckinTaskRunLog? LastRunLog { get; set; }
 
     public static BotCheckinTaskConfig CreateDefault() => new();
 

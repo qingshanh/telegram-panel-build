@@ -105,7 +105,7 @@
                 </MudTd>
                 <MudTd DataLabel="操作">
                     <MudIconButton Icon="@Icons.Material.Filled.Info" Size="Size.Small" Color="Color.Info"
-                                   OnClick="@(() => ShowScheduledTaskDetails(context))" />
+                                   OnClick="@(async (_) => await ShowScheduledTaskDetailsAsync(context))" />
                     <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
                                    OnClick="@(() => OpenEditScheduledTask(context))" />
                     @if (string.Equals(context.Status, ScheduledTaskStatuses.Enabled, StringComparison.OrdinalIgnoreCase))
@@ -1027,7 +1027,7 @@
             await AssetStorage.DeleteScopeAsync(scopeId);
     }
 
-    private void ShowScheduledTaskDetails(ScheduledTask task)
+    private async Task ShowScheduledTaskDetailsAsync(ScheduledTask task)
     {
         var details = $"任务类型: {GetTaskTypeName(task.TaskType)}\n" +
                       $"状态: {GetScheduledStatusName(task.Status)}\n" +
@@ -1043,6 +1043,24 @@
             details += $"上次运行: {TimeZone.Format(task.LastRunAtUtc.Value, "yyyy-MM-dd HH:mm")}\n";
         if (task.LastBatchTaskId.HasValue)
             details += $"最近批次任务: #{task.LastBatchTaskId.Value}\n";
+        if (task.LastBatchTaskId.HasValue)
+        {
+            var lastBatchTask = await TaskManagement.GetTaskAsync(task.LastBatchTaskId.Value);
+            if (lastBatchTask != null)
+            {
+                details += $"最近批次状态: {GetTaskStatusName(lastBatchTask.Status)}\n";
+                if (lastBatchTask.StartedAt.HasValue)
+                    details += $"最近批次开始: {TimeZone.Format(lastBatchTask.StartedAt.Value, "yyyy-MM-dd HH:mm:ss")}\n";
+                if (lastBatchTask.CompletedAt.HasValue)
+                    details += $"最近批次结束: {TimeZone.Format(lastBatchTask.CompletedAt.Value, "yyyy-MM-dd HH:mm:ss")}\n";
+
+                var logText = BuildBotCheckinLatestRunLogText(lastBatchTask.Config);
+                if (!string.IsNullOrWhiteSpace(logText))
+                    details += $"\n最近一次执行日志:\n{logText}\n";
+                else if (!string.IsNullOrWhiteSpace(lastBatchTask.Config))
+                    details += $"\n最近批次配置/结果:\n{lastBatchTask.Config}\n";
+            }
+        }
         if (!string.IsNullOrWhiteSpace(task.ConfigJson))
             details += $"\n配置信息:\n{task.ConfigJson}";
 
@@ -1050,6 +1068,81 @@
             .Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace("\n", "<br/>", StringComparison.Ordinal);
         DialogService.ShowMessageBox("计划任务详情", (MarkupString)html);
+    }
+
+    private string? BuildBotCheckinLatestRunLogText(string? configJson)
+    {
+        if (string.IsNullOrWhiteSpace(configJson))
+            return null;
+
+        try
+        {
+            var root = JsonNode.Parse(configJson)?.AsObject();
+            var log = root?["lastRunLog"]?.AsObject();
+            if (log == null)
+                return null;
+
+            var lines = new List<string>();
+            var summary = log["summary"]?.GetValue<string>();
+            var error = log["error"]?.GetValue<string>();
+            var startedAtUtc = log["startedAtUtc"]?.GetValue<DateTimeOffset?>();
+            var finishedAtUtc = log["finishedAtUtc"]?.GetValue<DateTimeOffset?>();
+            var completed = log["completed"]?.GetValue<int?>() ?? 0;
+            var failed = log["failed"]?.GetValue<int?>() ?? 0;
+            var totalOperations = log["totalOperations"]?.GetValue<int?>() ?? 0;
+            var canceled = log["canceled"]?.GetValue<bool?>() ?? false;
+
+            if (!string.IsNullOrWhiteSpace(summary))
+                lines.Add($"摘要: {summary}");
+            if (startedAtUtc.HasValue)
+                lines.Add($"开始: {TimeZone.Format(startedAtUtc.Value.UtcDateTime, "yyyy-MM-dd HH:mm:ss")}");
+            if (finishedAtUtc.HasValue)
+                lines.Add($"结束: {TimeZone.Format(finishedAtUtc.Value.UtcDateTime, "yyyy-MM-dd HH:mm:ss")}");
+            lines.Add($"进度: {completed}/{Math.Max(totalOperations, completed)}");
+            lines.Add($"失败: {failed}");
+            lines.Add($"是否取消: {(canceled ? "是" : "否")}");
+            if (!string.IsNullOrWhiteSpace(error))
+                lines.Add($"错误: {error}");
+
+            var entries = log["entries"]?.AsArray();
+            if (entries != null && entries.Count > 0)
+            {
+                lines.Add("明细:");
+                foreach (var entryNode in entries.Take(12).OfType<JsonObject>())
+                {
+                    var accountLabel = entryNode["accountLabel"]?.GetValue<string>() ?? "-";
+                    var stepNumber = entryNode["stepNumber"]?.GetValue<int?>() ?? 0;
+                    var message = entryNode["message"]?.GetValue<string>() ?? string.Empty;
+                    var sendSuccess = entryNode["sendSuccess"]?.GetValue<bool?>() ?? false;
+                    var replyCaptured = entryNode["replyCaptured"]?.GetValue<bool?>() ?? false;
+                    var replyMarkedAsRead = entryNode["replyMarkedAsRead"]?.GetValue<bool?>() ?? false;
+                    var replyPreview = entryNode["replyPreview"]?.GetValue<string>();
+                    var entryError = entryNode["error"]?.GetValue<string>();
+
+                    var status = sendSuccess
+                        ? (replyCaptured
+                            ? (replyMarkedAsRead ? "已回复并已读" : "已回复")
+                            : "已发送未捕获回复")
+                        : "发送失败";
+                    var line = $"{accountLabel} / 第 {stepNumber} 条 / {status} / {Shorten(message, 30)}";
+                    if (!string.IsNullOrWhiteSpace(replyPreview))
+                        line += $" / 回复: {Shorten(replyPreview, 40)}";
+                    if (!string.IsNullOrWhiteSpace(entryError))
+                        line += $" / 错误: {Shorten(entryError, 40)}";
+
+                    lines.Add(line);
+                }
+
+                if (entries.Count > 12)
+                    lines.Add($"其余 {entries.Count - 12} 条请查看最近批次任务配置。");
+            }
+
+            return string.Join('\n', lines);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private async Task OpenEditScheduledTask(ScheduledTask task)
@@ -1274,9 +1367,23 @@
             Config = normalized.Config
         };
     }
+
+    private static string Shorten(string? text, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return "-";
+
+        var normalized = text
+            .Replace("\r", " ", StringComparison.Ordinal)
+            .Replace("\n", " ", StringComparison.Ordinal)
+            .Trim();
+
+        if (normalized.Length <= maxLength)
+            return normalized;
+
+        return normalized[..Math.Max(0, maxLength - 3)] + "...";
+    }
 }
-
-
 
 
 

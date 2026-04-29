@@ -1157,7 +1157,7 @@
                 return row;
             }
 
-            ApplyCandidateToResult(row, wait.Candidate, config.MarkRepliesAsRead);
+            ApplyCandidateToResult(row, wait.Candidate, wait.MarkedAsRead);
             return row;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -1223,7 +1223,7 @@
                 return;
             }
 
-            ApplyCandidateToResult(row, followUp.Candidate, config.MarkRepliesAsRead);
+            ApplyCandidateToResult(row, followUp.Candidate, followUp.MarkedAsRead);
             row.Error = null;
             UpdateBufferedRow(row);
             if (previewRow?.AccountId == row.AccountId)

@@ -67,7 +67,7 @@ public sealed class BotCheckinTelegramCompatService
         }
     }
 
-    public async Task<(bool Success, string? Error, TelegramVerificationMessageCandidate? Candidate)> WaitForBotReplyAsync(
+    public async Task<(bool Success, string? Error, TelegramVerificationMessageCandidate? Candidate, bool MarkedAsRead)> WaitForBotReplyAsync(
         int accountId,
         AccountTelegramToolsService.ResolvedChatTarget target,
         int sentMessageId,
@@ -111,9 +111,9 @@ public sealed class BotCheckinTelegramCompatService
                     if (historyCandidate != null)
                     {
                         linkedCts.Cancel();
-                        if (markAsRead)
-                            await TryMarkChatAsReadAsync(accountId, target, historyCandidate.MessageId, cancellationToken);
-                        return (true, null, historyCandidate);
+                        var readApplied = markAsRead
+                            && await TryMarkChatAsReadAsync(accountId, target, historyCandidate.MessageId, cancellationToken);
+                        return (true, null, historyCandidate, readApplied);
                     }
 
                     break;
@@ -123,9 +123,9 @@ public sealed class BotCheckinTelegramCompatService
                 if (liveResult.Success && liveResult.Candidate != null)
                 {
                     linkedCts.Cancel();
-                    if (markAsRead)
-                        await TryMarkChatAsReadAsync(accountId, target, liveResult.Candidate.MessageId, cancellationToken);
-                    return liveResult;
+                    var readApplied = markAsRead
+                        && await TryMarkChatAsReadAsync(accountId, target, liveResult.Candidate.MessageId, cancellationToken);
+                    return (liveResult.Success, liveResult.Error, liveResult.Candidate, readApplied);
                 }
 
                 if (historyWaitTask.IsCompleted)
@@ -152,12 +152,12 @@ public sealed class BotCheckinTelegramCompatService
 
         if (finalFallback != null)
         {
-            if (markAsRead)
-                await TryMarkChatAsReadAsync(accountId, target, finalFallback.MessageId, cancellationToken);
-            return (true, null, finalFallback);
+            var readApplied = markAsRead
+                && await TryMarkChatAsReadAsync(accountId, target, finalFallback.MessageId, cancellationToken);
+            return (true, null, finalFallback, readApplied);
         }
 
-        return (false, $"Timed out waiting for bot reply ({timeoutSeconds}s).", null);
+        return (false, $"Timed out waiting for bot reply ({timeoutSeconds}s).", null, false);
     }
 
     public async Task<IReadOnlyList<int>> FindAccountsWithBotHistoryAsync(
@@ -201,7 +201,7 @@ public sealed class BotCheckinTelegramCompatService
         return result;
     }
 
-    public async Task TryMarkChatAsReadAsync(
+    public async Task<bool> TryMarkChatAsReadAsync(
         int accountId,
         AccountTelegramToolsService.ResolvedChatTarget target,
         int maxMessageId,
@@ -210,33 +210,25 @@ public sealed class BotCheckinTelegramCompatService
         try
         {
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
+            var latestMessageId = await TryGetLatestMessageIdAsync(client, target, cancellationToken);
+            var readUpToMessageId = Math.Max(maxMessageId, latestMessageId);
 
-            var method = typeof(Client)
-                .GetMethods(BindingFlags.Instance | BindingFlags.Public)
-                .FirstOrDefault(x => string.Equals(x.Name, "Messages_ReadHistory", StringComparison.Ordinal));
+            var invoked = await TryInvokePeerMethodAsync(client, "Messages_ReadHistory", target.Peer, readUpToMessageId, cancellationToken);
+            await TryInvokePeerMethodAsync(client, "Messages_ReadMentions", target.Peer, null, cancellationToken);
 
-            if (method == null)
-                return;
+            if (!invoked)
+                return false;
 
-            var parameters = method.GetParameters();
-            var args = new object?[parameters.Length];
-            for (var i = 0; i < parameters.Length; i++)
+            if (await IsChatMarkedAsReadAsync(client, target, readUpToMessageId, cancellationToken))
+                return true;
+
+            if (latestMessageId > readUpToMessageId)
             {
-                var parameter = parameters[i];
-                if (typeof(InputPeer).IsAssignableFrom(parameter.ParameterType))
-                    args[i] = target.Peer;
-                else if (parameter.ParameterType == typeof(int))
-                    args[i] = maxMessageId;
-                else if (parameter.HasDefaultValue)
-                    args[i] = parameter.DefaultValue;
-                else if (parameter.ParameterType == typeof(CancellationToken))
-                    args[i] = cancellationToken;
-                else
-                    args[i] = parameter.ParameterType.IsValueType ? Activator.CreateInstance(parameter.ParameterType) : null;
+                invoked = await TryInvokePeerMethodAsync(client, "Messages_ReadHistory", target.Peer, latestMessageId, cancellationToken);
+                await TryInvokePeerMethodAsync(client, "Messages_ReadMentions", target.Peer, null, cancellationToken);
+                if (invoked && await IsChatMarkedAsReadAsync(client, target, latestMessageId, cancellationToken))
+                    return true;
             }
-
-            if (method.Invoke(client, args) is Task task)
-                await task;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -246,6 +238,8 @@ public sealed class BotCheckinTelegramCompatService
         {
             _logger.LogDebug(ex, "TryMarkChatAsReadAsync failed: accountId={AccountId}, messageId={MessageId}", accountId, maxMessageId);
         }
+
+        return false;
     }
 
     private async Task<(bool Success, string? Error, TelegramVerificationMessageCandidate? Candidate)> WaitForLiveReplyAsync(
@@ -459,6 +453,261 @@ public sealed class BotCheckinTelegramCompatService
     private static bool HasUsefulReplyContent(string? text, int buttonCount, bool hasVisualMedia)
     {
         return !string.IsNullOrWhiteSpace(text) || buttonCount > 0 || hasVisualMedia;
+    }
+
+    private static async Task<int> TryGetLatestMessageIdAsync(
+        Client client,
+        AccountTelegramToolsService.ResolvedChatTarget target,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var history = await client.Messages_GetHistory(target.Peer, limit: 1);
+            return history.Messages
+                .OfType<Message>()
+                .Select(x => x.id)
+                .DefaultIfEmpty(0)
+                .Max();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private static async Task<bool> TryInvokePeerMethodAsync(
+        Client client,
+        string methodName,
+        InputPeer peer,
+        int? maxMessageId,
+        CancellationToken cancellationToken)
+    {
+        var methods = typeof(Client)
+            .GetMethods(BindingFlags.Instance | BindingFlags.Public)
+            .Where(x => string.Equals(x.Name, methodName, StringComparison.Ordinal))
+            .ToList();
+
+        foreach (var method in methods)
+        {
+            var parameters = method.GetParameters();
+            var args = new object?[parameters.Length];
+            var valid = true;
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                var parameter = parameters[i];
+                if (typeof(InputPeer).IsAssignableFrom(parameter.ParameterType))
+                {
+                    args[i] = peer;
+                }
+                else if ((parameter.ParameterType == typeof(int) || parameter.ParameterType == typeof(int?)) && maxMessageId.HasValue)
+                {
+                    args[i] = maxMessageId.Value;
+                }
+                else if (parameter.ParameterType == typeof(CancellationToken))
+                {
+                    args[i] = cancellationToken;
+                }
+                else if (parameter.HasDefaultValue)
+                {
+                    args[i] = parameter.DefaultValue;
+                }
+                else if (Nullable.GetUnderlyingType(parameter.ParameterType) != null)
+                {
+                    args[i] = null;
+                }
+                else
+                {
+                    valid = false;
+                    break;
+                }
+            }
+
+            if (!valid)
+                continue;
+
+            var result = method.Invoke(client, args);
+            if (result is Task task)
+                await task;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static async Task<bool> IsChatMarkedAsReadAsync(
+        Client client,
+        AccountTelegramToolsService.ResolvedChatTarget target,
+        int readUpToMessageId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(250, cancellationToken);
+            var dialogs = await client.Messages_GetAllDialogs();
+            foreach (var dialog in dialogs.Dialogs)
+            {
+                var peer = GetMemberValue(dialog, "peer", "Peer");
+                if (!IsSamePeerObject(peer, target.Peer))
+                    continue;
+
+                var unreadCount = GetIntMemberValue(dialog, "unread_count", "UnreadCount");
+                var unreadMentions = GetIntMemberValue(dialog, "unread_mentions_count", "UnreadMentionsCount");
+                var topMessageId = GetIntMemberValue(dialog, "top_message", "TopMessage");
+                var readInboxMaxId = GetIntMemberValue(dialog, "read_inbox_max_id", "ReadInboxMaxId");
+
+                if (unreadCount <= 0 && unreadMentions <= 0)
+                    return true;
+
+                if (topMessageId > 0 && readInboxMaxId > 0 && readInboxMaxId >= topMessageId)
+                    return true;
+
+                return topMessageId > 0 && topMessageId <= readUpToMessageId && unreadCount <= 0;
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            // ignore verification failure
+        }
+
+        return false;
+    }
+
+    private static bool IsSamePeerObject(object? left, object? right)
+    {
+        if (left == null || right == null)
+            return false;
+
+        return TryReadPeerIdentity(left, out var leftKind, out var leftId)
+               && TryReadPeerIdentity(right, out var rightKind, out var rightId)
+               && string.Equals(leftKind, rightKind, StringComparison.Ordinal)
+               && leftId == rightId;
+    }
+
+    private static bool TryReadPeerIdentity(object peer, out string kind, out long id)
+    {
+        kind = string.Empty;
+        id = 0;
+
+        switch (peer)
+        {
+            case PeerUser user:
+                kind = nameof(PeerUser);
+                id = user.user_id;
+                return true;
+            case PeerChat chat:
+                kind = nameof(PeerChat);
+                id = chat.chat_id;
+                return true;
+            case PeerChannel channel:
+                kind = nameof(PeerChannel);
+                id = channel.channel_id;
+                return true;
+        }
+
+        var type = peer.GetType();
+        if (TryGetMemberValue(type, peer, out id, "user_id", "UserId"))
+        {
+            kind = nameof(PeerUser);
+            return true;
+        }
+
+        if (TryGetMemberValue(type, peer, out id, "chat_id", "ChatId"))
+        {
+            kind = nameof(PeerChat);
+            return true;
+        }
+
+        if (TryGetMemberValue(type, peer, out id, "channel_id", "ChannelId"))
+        {
+            kind = nameof(PeerChannel);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static object? GetMemberValue(object instance, params string[] names)
+    {
+        var type = instance.GetType();
+        foreach (var name in names)
+        {
+            var property = type.GetProperty(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase);
+            if (property != null)
+                return property.GetValue(instance);
+
+            var field = type.GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase);
+            if (field != null)
+                return field.GetValue(instance);
+        }
+
+        return null;
+    }
+
+    private static int GetIntMemberValue(object instance, params string[] names)
+    {
+        var value = GetMemberValue(instance, names);
+        return value switch
+        {
+            int number => number,
+            long number => (int)number,
+            short number => number,
+            _ => 0
+        };
+    }
+
+    private static bool TryGetMemberValue(Type type, object instance, out long value, params string[] names)
+    {
+        value = 0;
+        foreach (var name in names)
+        {
+            var property = type.GetProperty(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase);
+            if (property != null)
+            {
+                var raw = property.GetValue(instance);
+                if (TryConvertToInt64(raw, out value))
+                    return true;
+            }
+
+            var field = type.GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase);
+            if (field != null)
+            {
+                var raw = field.GetValue(instance);
+                if (TryConvertToInt64(raw, out value))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryConvertToInt64(object? value, out long result)
+    {
+        result = 0;
+        switch (value)
+        {
+            case long longValue:
+                result = longValue;
+                return true;
+            case int intValue:
+                result = intValue;
+                return true;
+            case short shortValue:
+                result = shortValue;
+                return true;
+            case byte byteValue:
+                result = byteValue;
+                return true;
+            default:
+                return false;
+        }
     }
 
     private async Task<Client> GetOrCreateConnectedClientAsync(int accountId, CancellationToken cancellationToken)
