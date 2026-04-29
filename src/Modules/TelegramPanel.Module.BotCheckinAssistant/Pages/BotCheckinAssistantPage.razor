@@ -2,6 +2,7 @@
 @inject AccountManagementService AccountManagement
 @inject AccountTelegramToolsService AccountTelegramTools
 @inject BotCheckinAssistantPresetStore PresetStore
+@inject BotCheckinTelegramCompatService BotCompat
 @inject ISnackbar Snackbar
 @inject ILogger<BotCheckinAssistantPage> Logger
 
@@ -738,7 +739,7 @@
 
             if (!resolvedTargets.TryGetValue(account.Id, out var target))
             {
-                var resolve = await AccountTelegramTools.ResolveExternalBotTargetAsync(
+                var resolve = await BotCompat.ResolveExternalBotTargetAsync(
                     account.Id,
                     botTarget,
                     cancellationToken,
