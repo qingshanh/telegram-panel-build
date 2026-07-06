@@ -14,8 +14,7 @@ using WTelegram;
 namespace TelegramPanel.Core.Services.Telegram;
 
 /// <summary>
-/// 璐﹀彿璇婃柇 / 绯荤粺閫氱煡 / 鍦ㄧ嚎璁惧绠＄悊
-/// </summary>
+/// 鐠愶箑褰跨拠濠冩焽 / 缁崵绮洪柅姘辩叀 / 閸︺劎鍤庣拋鎯ь槵缁狅紕鎮?/// </summary>
 public class AccountTelegramToolsService
 {
     private const long TelegramSystemUserId = 777000;
@@ -41,7 +40,7 @@ public class AccountTelegramToolsService
     }
 
     /// <summary>
-    /// 鍒锋柊璐﹀彿鐘舵€侊紙鍙€夋繁搴︽帰娴嬶細妫€娴嬧€滃垱寤洪閬撴帴鍙ｆ槸鍚﹁鍐荤粨鈥濓紝浼氬垱寤哄苟鍒犻櫎涓€涓祴璇曢閬擄級
+    /// 閸掗攱鏌婄拹锕€褰块悩鑸碘偓渚婄礄閸欘垶鈧绻佹惔锔藉赴濞村绱板Λ鈧ù瀣р偓婊冨灡瀵ゆ椽顣堕柆鎾村复閸欙絾妲搁崥锕侇潶閸愯崵绮ㄩ垾婵撶礉娴兼艾鍨卞鍝勮嫙閸掔娀娅庢稉鈧稉顏呯ゴ鐠囨洟顣堕柆鎿勭礆
     /// </summary>
     public async Task<TelegramAccountStatusResult> RefreshAccountStatusAsync(int accountId, bool probeCreateChannel = false, CancellationToken cancellationToken = default)
     {
@@ -55,7 +54,7 @@ public class AccountTelegramToolsService
 
             var users = await ExecuteTelegramRequestAsync(
                 accountId,
-                "鎷夊彇璐﹀彿璧勬枡",
+                "閹峰褰囩拹锕€褰跨挧鍕灐",
                 () => client.Users_GetUsers(InputUser.Self),
                 cancellationToken,
                 resetClientOnTimeout: true);
@@ -66,8 +65,8 @@ public class AccountTelegramToolsService
             {
                 var missingProfile = new TelegramAccountStatusResult(
                     Ok: false,
-                    Summary: "鏃犳硶鑾峰彇璐﹀彿璧勬枡",
-                    Details: "Users_GetUsers(Self) 鏈繑鍥?User",
+                    Summary: "閺冪姵纭堕懢宄板絿鐠愶箑褰跨挧鍕灐",
+                    Details: "Users_GetUsers(Self) 閺堫亣绻戦崶?User",
                     CheckedAtUtc: checkedAt);
                 await TryPersistStatusAsync(accountId, missingProfile, cancellationToken: cancellationToken);
                 return missingProfile;
@@ -94,11 +93,11 @@ public class AccountTelegramToolsService
                 await TryPopulateEstimatedRegistrationAsync(account, client, accountId, cancellationToken);
             }
 
-            var summary = "姝ｅ父";
+            var summary = "濮濓絽鐖?;
             if (profile.IsDeleted)
-                summary = "璐﹀彿宸叉敞閿€/琚垹闄?;
+                summary = "鐠愶箑褰垮鍙夋暈闁库偓/鐞氼偄鍨归梽?;
             else if (profile.IsRestricted)
-                summary = "璐﹀彿鍙楅檺锛圧estricted锛?;
+                summary = "鐠愶箑褰块崣妤呮閿涘湩estricted閿?;
 
             if (probeCreateChannel)
             {
@@ -107,8 +106,8 @@ public class AccountTelegramToolsService
                 {
                     var frozen = new TelegramAccountStatusResult(
                         Ok: false,
-                        Summary: "璐﹀彿琚喕缁擄紙鍒涘缓棰戦亾鎺ュ彛鍙楅檺锛?,
-                        Details: $"鍒涘缓棰戦亾鎺㈡祴锛歿probe.Message}{Environment.NewLine}{BuildProfileDetails(profile)}",
+                        Summary: "鐠愶箑褰跨悮顐㈠枙缂佹搫绱欓崚娑樼紦妫版垿浜鹃幒銉ュ經閸欐妾洪敍?,
+                        Details: $"閸掓稑缂撴０鎴︿壕閹恒垺绁撮敍姝縫robe.Message}{Environment.NewLine}{BuildProfileDetails(profile)}",
                         CheckedAtUtc: checkedAt,
                         Profile: profile);
                     await TryPersistStatusAsync(accountId, frozen, account, persistProfile: true, cancellationToken: cancellationToken);
@@ -119,18 +118,18 @@ public class AccountTelegramToolsService
                 {
                     var failed = new TelegramAccountStatusResult(
                         Ok: false,
-                        Summary: "鍒涘缓棰戦亾鎺㈡祴澶辫触",
-                        Details: $"鍒涘缓棰戦亾鎺㈡祴锛歿probe.Message}{Environment.NewLine}{BuildProfileDetails(profile)}",
+                        Summary: "閸掓稑缂撴０鎴︿壕閹恒垺绁存径杈Е",
+                        Details: $"閸掓稑缂撴０鎴︿壕閹恒垺绁撮敍姝縫robe.Message}{Environment.NewLine}{BuildProfileDetails(profile)}",
                         CheckedAtUtc: checkedAt,
                         Profile: profile);
                     await TryPersistStatusAsync(accountId, failed, account, persistProfile: true, cancellationToken: cancellationToken);
                     return failed;
                 }
 
-                // 鎺㈡祴鎴愬姛锛屼笉褰卞搷鍘熺姸鎬侊紝浠呰ˉ鍏呰鎯?                var okWithProbe = new TelegramAccountStatusResult(
+                // 閹恒垺绁撮幋鎰閿涘奔绗夎ぐ鍗炴惙閸樼喓濮搁幀渚婄礉娴犲懓藟閸忓懓顕涢幆?                var okWithProbe = new TelegramAccountStatusResult(
                     Ok: true,
                     Summary: summary,
-                    Details: $"鍒涘缓棰戦亾鎺㈡祴锛氬彲鐢紙宸茶嚜鍔ㄦ竻鐞嗘祴璇曢閬擄級{Environment.NewLine}{BuildProfileDetails(profile)}",
+                    Details: $"閸掓稑缂撴０鎴︿壕閹恒垺绁撮敍姘讲閻㈩煉绱欏鑼跺殰閸斻劍绔婚悶鍡樼ゴ鐠囨洟顣堕柆鎿勭礆{Environment.NewLine}{BuildProfileDetails(profile)}",
                     CheckedAtUtc: checkedAt,
                     Profile: profile);
                 await TryPersistStatusAsync(accountId, okWithProbe, account, persistProfile: true, cancellationToken: cancellationToken);
@@ -150,16 +149,16 @@ public class AccountTelegramToolsService
         {
             return new TelegramAccountStatusResult(
                 Ok: false,
-                Summary: "宸插彇娑?,
-                Details: "鎿嶄綔宸插彇娑堬紙椤甸潰鍏抽棴/鍒锋柊瀵艰嚧鍙栨秷锛?,
+                Summary: "瀹告彃褰囧☉?,
+                Details: "閹垮秳缍斿鎻掑絿濞戝牞绱欐い鐢告桨閸忔娊妫?閸掗攱鏌婄€佃壈鍤ч崣鏍ㄧХ閿?,
                 CheckedAtUtc: checkedAt);
         }
         catch (ObjectDisposedException) when (cancellationToken.IsCancellationRequested)
         {
-            // Blazor 椤甸潰鍒锋柊/鏂繛鏃讹紝Scoped 鐨?DbContext 鍙兘宸茶閲婃斁锛涙妸瀹冭涓哄彇娑堣€屼笉鏄敊璇€?            return new TelegramAccountStatusResult(
+            // Blazor 妞ょ敻娼伴崚閿嬫煀/閺傤叀绻涢弮璁圭礉Scoped 閻?DbContext 閸欘垵鍏樺鑼额潶闁插﹥鏂侀敍娑欏Ω鐎瑰啳顫嬫稉鍝勫絿濞戝牐鈧奔绗夐弰顖炴晩鐠囶垬鈧?            return new TelegramAccountStatusResult(
                 Ok: false,
-                Summary: "宸插彇娑?,
-                Details: "椤甸潰宸插叧闂?鍒锋柊锛屾搷浣滆涓柇",
+                Summary: "瀹告彃褰囧☉?,
+                Details: "妞ょ敻娼板鎻掑彠闂?閸掗攱鏌婇敍灞炬惙娴ｆ粏顫︽稉顓熸焽",
                 CheckedAtUtc: checkedAt);
         }
         catch (Exception ex)
@@ -204,10 +203,10 @@ public class AccountTelegramToolsService
         }
         catch (ObjectDisposedException) when (cancellationToken.IsCancellationRequested)
         {
-            // 椤甸潰/浣滅敤鍩熷凡閿€姣佸鑷寸殑 DbContext 閲婃斁锛屽拷鐣ュ嵆鍙?        }
+            // 妞ょ敻娼?娴ｆ粎鏁ら崺鐔峰嚒闁库偓濮ｄ礁顕遍懛瀵告畱 DbContext 闁插﹥鏂侀敍灞芥嫹閻ｃ儱宓嗛崣?        }
         catch (Exception ex)
         {
-            // 鍙栨秷鍦烘櫙涓嶉渶瑕佸櫔澹版棩蹇?            if (!cancellationToken.IsCancellationRequested)
+            // 閸欐牗绉烽崷鐑樻珯娑撳秹娓剁憰浣告珨婢圭増妫╄箛?            if (!cancellationToken.IsCancellationRequested)
                 _logger.LogWarning(ex, "Failed to persist Telegram status cache for account {AccountId}", accountId);
         }
     }
@@ -314,7 +313,7 @@ public class AccountTelegramToolsService
 
                 var history = await ExecuteTelegramRequestAsync(
                     accountId,
-                    "璇诲彇 777000 绯荤粺閫氱煡鍘嗗彶",
+                    "鐠囪褰?777000 缁崵绮洪柅姘辩叀閸樺棗褰?,
                     () => client.Messages_GetHistory(peer, offset_id: offsetId, limit: pageSize),
                     cancellationToken,
                     resetClientOnTimeout: true);
@@ -399,7 +398,7 @@ public class AccountTelegramToolsService
     }
 
     /// <summary>
-    /// 淇敼 Telegram 涓ゆ楠岃瘉锛堜簩绾у瘑鐮侊級銆?    /// </summary>
+    /// 娣囶喗鏁?Telegram 娑撱倖顒炴宀冪槈閿涘牅绨╃痪褍鐦戦惍渚婄礆閵?    /// </summary>
     public async Task<(bool Success, string? Error)> ChangeTwoFactorPasswordAsync(
         int accountId,
         string? currentPassword,
@@ -410,7 +409,7 @@ public class AccountTelegramToolsService
         try
         {
             if (string.IsNullOrWhiteSpace(newPassword))
-                return (false, "鏂颁簩绾у瘑鐮佷笉鑳戒负绌?);
+                return (false, "閺傞绨╃痪褍鐦戦惍浣风瑝閼虫垝璐熺粚?);
 
             currentPassword = (currentPassword ?? string.Empty).Trim();
             newPassword = newPassword.Trim();
@@ -419,21 +418,21 @@ public class AccountTelegramToolsService
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
 
-            // 鍙傝€?WTelegramClient 瀹樻柟绀轰緥锛欰ccount_UpdatePasswordSettings 闇€瑕?SRP 鏍￠獙鍊硷紙鏃у瘑鐮侊級涓庢柊瀵嗙爜 settings
+            // 閸欏倽鈧?WTelegramClient 鐎规ɑ鏌熺粈杞扮伐閿涙ccount_UpdatePasswordSettings 闂団偓鐟?SRP 閺嶏繝鐛欓崐纭风礄閺冄冪槕閻緤绱氭稉搴㈡煀鐎靛棛鐖?settings
             var accountPwd = await client.Account_GetPassword();
             cancellationToken.ThrowIfCancellationRequested();
 
-            // 鑻ヨ处鍙峰凡寮€鍚袱姝ラ獙璇佷絾鏈彁渚涙棫瀵嗙爜锛屽垯鐩存帴鎻愮ず
+            // 閼汇儴澶勯崣宄板嚒瀵偓閸氼垯琚卞銉╃崣鐠囦椒绲鹃張顏呭絹娓氭稒妫€靛棛鐖滈敍灞藉灟閻╁瓨甯撮幓鎰仛
             TL.InputCheckPasswordSRP? oldCheck = null;
             if (accountPwd.current_algo != null)
             {
                 if (string.IsNullOrWhiteSpace(currentPassword))
-                    return (false, "璇ヨ处鍙峰凡寮€鍚袱姝ラ獙璇侊紝璇峰～鍐欏師浜岀骇瀵嗙爜");
+                    return (false, "鐠囥儴澶勯崣宄板嚒瀵偓閸氼垯琚卞銉╃崣鐠囦緤绱濈拠宄帮綖閸愭瑥甯禍宀€楠囩€靛棛鐖?);
 
                 oldCheck = await WTelegram.Client.InputCheckPassword(accountPwd, currentPassword);
             }
 
-            // 璁?InputCheckPassword 鐢熸垚 new_password_hash锛堥渶瑕佸皢 current_algo 缃┖锛?            accountPwd.current_algo = null;
+            // 鐠?InputCheckPassword 閻㈢喐鍨?new_password_hash閿涘牓娓剁憰浣哥殺 current_algo 缂冾喚鈹栭敍?            accountPwd.current_algo = null;
             var newPasswordHash = await WTelegram.Client.InputCheckPassword(accountPwd, newPassword);
 
             var settings = new TL.Account_PasswordInputSettings
@@ -450,13 +449,13 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}閿涙details}";
             return (false, msg);
         }
     }
 
     /// <summary>
-    /// 蹇樿浜岀骇瀵嗙爜锛氬悜 Telegram 鍙戣捣鈥滈噸缃袱姝ラ獙璇佸瘑鐮佲€濈敵璇凤紙閫氬父闇€瑕佺瓑寰?7 澶╋級銆?    /// </summary>
+    /// 韫囨顔囨禍宀€楠囩€靛棛鐖滈敍姘倻 Telegram 閸欐垼鎹ｉ垾婊堝櫢缂冾喕琚卞銉╃崣鐠囦礁鐦戦惍浣测偓婵堟暤鐠囧嚖绱欓柅姘埗闂団偓鐟曚胶鐡戝?7 婢垛晪绱氶妴?    /// </summary>
     public async Task<(bool Success, string? Error, DateTimeOffset? WaitUntilUtc)> RequestTwoFactorPasswordResetAsync(
         int accountId,
         CancellationToken cancellationToken = default)
@@ -472,28 +471,28 @@ public class AccountTelegramToolsService
             switch (result)
             {
                 case TL.Account_ResetPasswordOk:
-                    return (true, "浜岀骇瀵嗙爜宸查噸缃垚鍔燂紙鐜板湪鍙互鐩存帴閲嶆柊璁剧疆浜岀骇瀵嗙爜锛?, null);
+                    return (true, "娴滃瞼楠囩€靛棛鐖滃鏌ュ櫢缂冾喗鍨氶崝鐕傜礄閻滄澘婀崣顖欎簰閻╁瓨甯撮柌宥嗘煀鐠佸墽鐤嗘禍宀€楠囩€靛棛鐖滈敍?, null);
 
                 case TL.Account_ResetPasswordRequestedWait wait:
                 {
                     var untilUtc = ToUtcDateTimeOffset(wait.until_date);
-                    return (true, $"宸叉彁浜ら噸缃敵璇凤紝璇风瓑寰呰嚦 {untilUtc:yyyy-MM-dd HH:mm:ss} UTC 鍚庡啀瀹屾垚閲嶇疆/閲嶆柊璁剧疆浜岀骇瀵嗙爜", untilUtc);
+                    return (true, $"瀹稿弶褰佹禍銈夊櫢缂冾喚鏁电拠鍑ょ礉鐠囬鐡戝鍛板殾 {untilUtc:yyyy-MM-dd HH:mm:ss} UTC 閸氬骸鍟€鐎瑰本鍨氶柌宥囩枂/闁插秵鏌婄拋鍓х枂娴滃瞼楠囩€靛棛鐖?, untilUtc);
                 }
 
                 case TL.Account_ResetPasswordFailedWait failed:
                 {
                     var retryUtc = ToUtcDateTimeOffset(failed.retry_date);
-                    return (false, $"杩戞湡鏈夎鍙栨秷鐨勯噸缃敵璇凤紝闇€绛夊緟鑷?{retryUtc:yyyy-MM-dd HH:mm:ss} UTC 鍚庢墠鑳藉啀娆＄敵璇?, retryUtc);
+                    return (false, $"鏉╂垶婀￠張澶庮潶閸欐牗绉烽惃鍕櫢缂冾喚鏁电拠鍑ょ礉闂団偓缁涘绶熼懛?{retryUtc:yyyy-MM-dd HH:mm:ss} UTC 閸氬孩澧犻懗钘夊晙濞嗭紕鏁电拠?, retryUtc);
                 }
 
                 default:
-                    return (false, $"鏈煡杩斿洖绫诲瀷锛歿result.GetType().Name}", null);
+                    return (false, $"閺堫亞鐓℃潻鏂挎礀缁鐎烽敍姝縭esult.GetType().Name}", null);
             }
         }
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}閿涙details}";
             return (false, msg, null);
         }
     }
@@ -509,7 +508,7 @@ public class AccountTelegramToolsService
     }
 
     /// <summary>
-    /// 鑾峰彇涓ゆ楠岃瘉鎵惧洖閭鐘舵€侊紙鏄惁宸茬粦瀹氥€佹槸鍚﹀瓨鍦ㄥ緟纭鐨勯偖绠憋級銆?    /// </summary>
+    /// 閼惧嘲褰囨稉銈嗩劄妤犲矁鐦夐幍鎯ф礀闁喚顔堥悩鑸碘偓渚婄礄閺勵垰鎯佸鑼拨鐎规哎鈧焦妲搁崥锕€鐡ㄩ崷銊ョ窡绾喛顓婚惃鍕仏缁犳唻绱氶妴?    /// </summary>
     public async Task<(bool Success, string? Error, bool HasTwoFactorPassword, bool HasRecoveryEmail, string? UnconfirmedEmailPattern)>
         GetTwoFactorRecoveryEmailStatusAsync(int accountId, CancellationToken cancellationToken = default)
     {
@@ -533,13 +532,13 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}閿涙details}";
             return (false, msg, false, false, null);
         }
     }
 
     /// <summary>
-    /// 缁戝畾/鎹㈢粦涓ゆ楠岃瘉鎵惧洖閭锛堜細鍙戦€侀獙璇佺爜鍒伴偖绠憋紝闇€璋冪敤 ConfirmTwoFactorRecoveryEmailAsync 纭锛夈€?    /// </summary>
+    /// 缂佹垵鐣?閹广垻绮︽稉銈嗩劄妤犲矁鐦夐幍鎯ф礀闁喚顔堥敍鍫滅窗閸欐垿鈧線鐛欑拠浣虹垳閸掍即鍋栫粻鎲嬬礉闂団偓鐠嬪啰鏁?ConfirmTwoFactorRecoveryEmailAsync 绾喛顓婚敍澶堚偓?    /// </summary>
     public async Task<(bool Success, string? Error, string? EmailPattern)> SetTwoFactorRecoveryEmailAsync(
         int accountId,
         string? currentPassword,
@@ -550,7 +549,7 @@ public class AccountTelegramToolsService
         {
             email = (email ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(email))
-                return (false, "閭涓嶈兘涓虹┖", null);
+                return (false, "闁喚顔堟稉宥堝厴娑撹櫣鈹?, null);
 
             try
             {
@@ -558,7 +557,7 @@ public class AccountTelegramToolsService
             }
             catch
             {
-                return (false, "閭鏍煎紡涓嶆纭?, null);
+                return (false, "闁喚顔堥弽鐓庣础娑撳秵顒滅涵?, null);
             }
 
             currentPassword = (currentPassword ?? string.Empty).Trim();
@@ -570,10 +569,10 @@ public class AccountTelegramToolsService
             cancellationToken.ThrowIfCancellationRequested();
 
             if (pwd.current_algo == null)
-                return (false, "璇ヨ处鍙锋湭寮€鍚袱姝ラ獙璇侊紝鏃犳硶缁戝畾鎵惧洖閭锛岃鍏堣缃簩绾у瘑鐮?, null);
+                return (false, "鐠囥儴澶勯崣閿嬫弓瀵偓閸氼垯琚卞銉╃崣鐠囦緤绱濋弮鐘崇《缂佹垵鐣鹃幍鎯ф礀闁喚顔堥敍宀冾嚞閸忓牐顔曠純顔荤癌缁狙冪槕閻?, null);
 
             if (string.IsNullOrWhiteSpace(currentPassword))
-                return (false, "璇峰～鍐欏師浜岀骇瀵嗙爜", null);
+                return (false, "鐠囧嘲锝為崘娆忓斧娴滃瞼楠囩€靛棛鐖?, null);
 
             var oldCheck = await WTelegram.Client.InputCheckPassword(pwd, currentPassword);
 
@@ -585,7 +584,7 @@ public class AccountTelegramToolsService
 
             await client.Account_UpdatePasswordSettings(oldCheck, settings);
 
-            // 鏇存柊鍚庡彲閫氳繃 getPassword 鑾峰彇鈥滃緟纭閭鈥濇帺鐮佷俊鎭?            var after = await client.Account_GetPassword();
+            // 閺囧瓨鏌婇崥搴″讲闁俺绻?getPassword 閼惧嘲褰囬垾婊冪窡绾喛顓婚柇顔绢唸閳ユ繃甯洪惍浣蜂繆閹?            var after = await client.Account_GetPassword();
             var pattern = after.flags.HasFlag(TL.Account_Password.Flags.has_email_unconfirmed_pattern)
                 ? (after.email_unconfirmed_pattern ?? "").Trim()
                 : null;
@@ -598,13 +597,13 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}閿涙details}";
             return (false, msg, null);
         }
     }
 
     /// <summary>
-    /// 纭涓ゆ楠岃瘉鎵惧洖閭楠岃瘉鐮併€?    /// </summary>
+    /// 绾喛顓绘稉銈嗩劄妤犲矁鐦夐幍鎯ф礀闁喚顔堟宀冪槈閻降鈧?    /// </summary>
     public async Task<(bool Success, string? Error)> ConfirmTwoFactorRecoveryEmailAsync(
         int accountId,
         string code,
@@ -614,7 +613,7 @@ public class AccountTelegramToolsService
         {
             code = (code ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(code))
-                return (false, "楠岃瘉鐮佷笉鑳戒负绌?);
+                return (false, "妤犲矁鐦夐惍浣风瑝閼虫垝璐熺粚?);
 
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
@@ -625,13 +624,13 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}閿涙details}";
             return (false, msg);
         }
     }
 
     /// <summary>
-    /// 閲嶅彂涓ゆ楠岃瘉鎵惧洖閭楠岃瘉鐮侊紙闇€瑕佸厛璁剧疆閭锛夈€?    /// </summary>
+    /// 闁插秴褰傛稉銈嗩劄妤犲矁鐦夐幍鎯ф礀闁喚顔堟宀冪槈閻緤绱欓棁鈧憰浣稿帥鐠佸墽鐤嗛柇顔绢唸閿涘鈧?    /// </summary>
     public async Task<(bool Success, string? Error, string? EmailPattern, int? CodeLength)> ResendTwoFactorRecoveryEmailAsync(
         int accountId,
         CancellationToken cancellationToken = default)
@@ -643,7 +642,7 @@ public class AccountTelegramToolsService
 
             var ok = await client.Account_ResendPasswordEmail();
             if (!ok)
-                return (false, "閲嶅彂澶辫触", null, null);
+                return (false, "闁插秴褰傛径杈Е", null, null);
 
             var pwd = await client.Account_GetPassword();
             var pattern = pwd.flags.HasFlag(TL.Account_Password.Flags.has_email_unconfirmed_pattern)
@@ -653,19 +652,18 @@ public class AccountTelegramToolsService
             if (string.IsNullOrWhiteSpace(pattern))
                 pattern = null;
 
-            // 璇?API 涓嶈繑鍥為獙璇佺爜闀垮害锛屼粎杩斿洖閭鎺╃爜淇℃伅
-            return (true, null, pattern, null);
+            // 鐠?API 娑撳秷绻戦崶鐐虹崣鐠囦胶鐖滈梹鍨閿涘奔绮庢潻鏂挎礀闁喚顔堥幒鈺冪垳娣団剝浼?            return (true, null, pattern, null);
         }
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}閿涙details}";
             return (false, msg, null, null);
         }
     }
 
     /// <summary>
-    /// 鍙栨秷寰呯‘璁ょ殑鎵惧洖閭楠岃瘉鐮併€?    /// </summary>
+    /// 閸欐牗绉峰鍛€樼拋銈囨畱閹垫儳娲栭柇顔绢唸妤犲矁鐦夐惍浣碘偓?    /// </summary>
     public async Task<(bool Success, string? Error)> CancelTwoFactorRecoveryEmailAsync(
         int accountId,
         CancellationToken cancellationToken = default)
@@ -681,13 +679,13 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}閿涙details}";
             return (false, msg);
         }
     }
 
     /// <summary>
-    /// 鑾峰彇鐧诲綍閭鐘舵€侊紙浠呰繑鍥炴帺鐮?Pattern锛屼笉杩斿洖鐪熷疄閭锛夈€?    /// </summary>
+    /// 閼惧嘲褰囬惂璇茬秿闁喚顔堥悩鑸碘偓渚婄礄娴犲懓绻戦崶鐐村负閻?Pattern閿涘奔绗夋潻鏂挎礀閻喎鐤勯柇顔绢唸閿涘鈧?    /// </summary>
     public async Task<(bool Success, string? Error, bool HasLoginEmail, string? LoginEmailPattern)>
         GetLoginEmailStatusAsync(int accountId, CancellationToken cancellationToken = default)
     {
@@ -707,13 +705,13 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}閿涙details}";
             return (false, msg, false, null);
         }
     }
 
     /// <summary>
-    /// 鍙戦€佺櫥褰曢偖绠遍獙璇佺爜锛堢敤浜庘€滅櫥褰曢偖绠卞彉鏇?璁剧疆鈥濓級銆?    /// 娉ㄦ剰锛氶儴鍒嗚处鍙峰彲鑳芥棤娉曞湪鈥滃凡鐧诲綍鐘舵€佲€濅笅鏂板鐧诲綍閭锛堥渶瑕佺櫥褰曟祦绋嬭Е鍙戠殑 setup锛夈€?    /// </summary>
+    /// 閸欐垿鈧胶娅ヨぐ鏇㈠仏缁犻亶鐛欑拠浣虹垳閿涘牏鏁ゆ禍搴樷偓婊呮瑜版洟鍋栫粻鍗炲綁閺?鐠佸墽鐤嗛垾婵撶礆閵?    /// 濞夈劍鍓伴敍姘跺劥閸掑棜澶勯崣宄板讲閼宠姤妫ゅ▔鏇炴躬閳ユ粌鍑￠惂璇茬秿閻樿埖鈧讲鈧繀绗呴弬鏉款杻閻ц缍嶉柇顔绢唸閿涘牓娓剁憰浣烘瑜版洘绁︾粙瀣曢崣鎴犳畱 setup閿涘鈧?    /// </summary>
     public async Task<(bool Success, string? Error, string? EmailPattern)> SetLoginEmailAsync(
         int accountId,
         string email,
@@ -723,7 +721,7 @@ public class AccountTelegramToolsService
         {
             email = (email ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(email))
-                return (false, "閭涓嶈兘涓虹┖", null);
+                return (false, "闁喚顔堟稉宥堝厴娑撹櫣鈹?, null);
 
             try
             {
@@ -731,7 +729,7 @@ public class AccountTelegramToolsService
             }
             catch
             {
-                return (false, "閭鏍煎紡涓嶆纭?, null);
+                return (false, "闁喚顔堥弽鐓庣础娑撳秵顒滅涵?, null);
             }
 
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
@@ -747,13 +745,13 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}閿涙details}";
             return (false, msg, null);
         }
     }
 
     /// <summary>
-    /// 纭鐧诲綍閭楠岃瘉鐮併€?    /// </summary>
+    /// 绾喛顓婚惂璇茬秿闁喚顔堟宀冪槈閻降鈧?    /// </summary>
     public async Task<(bool Success, string? Error)> ConfirmLoginEmailAsync(
         int accountId,
         string code,
@@ -763,7 +761,7 @@ public class AccountTelegramToolsService
         {
             code = (code ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(code))
-                return (false, "璇峰～鍐欓偖绠遍獙璇佺爜");
+                return (false, "鐠囧嘲锝為崘娆撳仏缁犻亶鐛欑拠浣虹垳");
 
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
@@ -774,13 +772,13 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}閿涙details}";
             return (false, msg);
         }
     }
 
     /// <summary>
-    /// 鏇存柊褰撳墠璐﹀彿鐨勬樀绉?绠€浠嬶紙Bio锛夈€?    /// 娉ㄦ剰锛氱敤鎴峰悕涓庡ご鍍忓垎寮€浣跨敤 UpdateUsernameAsync / UpdateProfilePhotoAsync銆?    /// </summary>
+    /// 閺囧瓨鏌婅ぐ鎾冲鐠愶箑褰块惃鍕█缁?缁犫偓娴犲绱橞io閿涘鈧?    /// 濞夈劍鍓伴敍姘辨暏閹村嘲鎮曟稉搴°仈閸嶅繐鍨庡鈧担璺ㄦ暏 UpdateUsernameAsync / UpdateProfilePhotoAsync閵?    /// </summary>
     public async Task<(bool Success, string? Error)> UpdateUserProfileAsync(
         int accountId,
         string? nickname,
@@ -795,8 +793,7 @@ public class AccountTelegramToolsService
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
 
-            // account.updateProfile 鐨勫瓧娈垫槸鍙€夌殑锛氫紶 null 琛ㄧず涓嶄慨鏀硅瀛楁
-            string? firstName = null;
+            // account.updateProfile 閻ㄥ嫬鐡у▓鍨Ц閸欘垶鈧娈戦敍姘炊 null 鐞涖劎銇氭稉宥勬叏閺€纭咁嚉鐎涙顔?            string? firstName = null;
             string? lastName = null;
             if (nickname != null)
             {
@@ -810,13 +807,13 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}閿涙details}";
             return (false, msg);
         }
     }
 
     /// <summary>
-    /// 鏇存柊褰撳墠璐﹀彿鐢ㄦ埛鍚嶏紙t.me/xxx锛夈€備紶绌哄瓧绗︿覆琛ㄧず娓呯┖鐢ㄦ埛鍚嶃€?    /// </summary>
+    /// 閺囧瓨鏌婅ぐ鎾冲鐠愶箑褰块悽銊﹀煕閸氬稄绱檛.me/xxx閿涘鈧倷绱剁粚鍝勭摟缁楋缚瑕嗙悰銊с仛濞撳懐鈹栭悽銊﹀煕閸氬秲鈧?    /// </summary>
     public async Task<(bool Success, string? Error, string? Username)> UpdateUsernameAsync(
         int accountId,
         string? username,
@@ -831,19 +828,19 @@ public class AccountTelegramToolsService
 
             var result = await client.Account_UpdateUsername(username);
 
-            // result 鍙兘鏄?User 鎴?bool锛岀粺涓€浠庤緭鍏ュ洖濉嵆鍙?            var normalized = string.IsNullOrWhiteSpace(username) ? null : username;
+            // result 閸欘垵鍏橀弰?User 閹?bool閿涘瞼绮烘稉鈧禒搴ょ翻閸忋儱娲栨繅顐㈠祮閸?            var normalized = string.IsNullOrWhiteSpace(username) ? null : username;
             return (true, null, normalized);
         }
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}閿涙details}";
             return (false, msg, null);
         }
     }
 
     /// <summary>
-    /// 閫氳繃閾炬帴/鐢ㄦ埛鍚嶅姞鍏ョ兢缁勬垨璁㈤槄棰戦亾锛堟敮鎸?https://t.me/xxx銆乼.me/+hash銆丂username銆乽sername銆乼g://join?invite=hash 绛夛級銆?    /// </summary>
+    /// 闁俺绻冮柧鐐复/閻劍鍩涢崥宥呭閸忋儳鍏㈢紒鍕灗鐠併垽妲勬０鎴︿壕閿涘牊鏁幐?https://t.me/xxx閵嗕辜.me/+hash閵嗕競username閵嗕菇sername閵嗕辜g://join?invite=hash 缁涘绱氶妴?    /// </summary>
     public async Task<(bool Success, string? Error, string? JoinedTitle)> JoinChatOrChannelAsync(
         int accountId,
         string linkOrUsername,
@@ -853,7 +850,7 @@ public class AccountTelegramToolsService
         {
             var raw = (linkOrUsername ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(raw))
-                return (false, "閾炬帴/鐢ㄦ埛鍚嶄负绌?, null);
+                return (false, "闁剧偓甯?閻劍鍩涢崥宥勮礋缁?, null);
 
             var url = NormalizeTelegramJoinUrl(raw);
 
@@ -874,18 +871,18 @@ public class AccountTelegramToolsService
         }
         catch (RpcException ex) when (ex.Code == 400 && string.Equals(ex.Message, "USER_ALREADY_PARTICIPANT", StringComparison.OrdinalIgnoreCase))
         {
-            return (true, null, "宸插湪缇ょ粍/棰戦亾涓?);
+            return (true, null, "瀹告彃婀紘銈囩矋/妫版垿浜炬稉?);
         }
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}閿涙details}";
             return (false, msg, null);
         }
     }
 
     /// <summary>
-    /// 閫氳繃閾炬帴/鐢ㄦ埛鍚嶉€€鍑虹兢缁勬垨鍙栨秷璁㈤槄棰戦亾锛堟敮鎸?https://t.me/xxx銆乼.me/+hash銆丂username銆乽sername銆乼g://join?invite=hash 绛夛級銆?    /// </summary>
+    /// 闁俺绻冮柧鐐复/閻劍鍩涢崥宥夆偓鈧崙铏瑰參缂佸嫭鍨ㄩ崣鏍ㄧХ鐠併垽妲勬０鎴︿壕閿涘牊鏁幐?https://t.me/xxx閵嗕辜.me/+hash閵嗕競username閵嗕菇sername閵嗕辜g://join?invite=hash 缁涘绱氶妴?    /// </summary>
     public async Task<(bool Success, string? Error, string? LeftTitle)> LeaveChatOrChannelAsync(
         int accountId,
         string linkOrUsername,
@@ -895,14 +892,14 @@ public class AccountTelegramToolsService
         {
             var raw = (linkOrUsername ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(raw))
-                return (false, "閾炬帴/鐢ㄦ埛鍚嶄负绌?, null);
+                return (false, "闁剧偓甯?閻劍鍩涢崥宥勮礋缁?, null);
 
             var url = NormalizeTelegramJoinUrl(raw);
 
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
 
-            // 瑙ｆ瀽鐩爣锛堜笉鍔犲叆锛?            var chat = await client.AnalyzeInviteLink(url, join: false);
+            // 鐟欙絾鐎介惄顔界垼閿涘牅绗夐崝鐘插弳閿?            var chat = await client.AnalyzeInviteLink(url, join: false);
             cancellationToken.ThrowIfCancellationRequested();
 
             var title = chat switch
@@ -920,25 +917,25 @@ public class AccountTelegramToolsService
             };
 
             if (peer == null)
-                return (false, "鏃犳硶瑙ｆ瀽鐩爣缇ょ粍/棰戦亾", null);
+                return (false, "閺冪姵纭剁憴锝嗙€介惄顔界垼缂囥倗绮?妫版垿浜?, null);
 
             await client.LeaveChat(peer);
             return (true, null, title);
         }
         catch (RpcException ex) when (ex.Code == 400 && string.Equals(ex.Message, "USER_NOT_PARTICIPANT", StringComparison.OrdinalIgnoreCase))
         {
-            return (true, null, "鏈湪缇ょ粍/棰戦亾涓?);
+            return (true, null, "閺堫亜婀紘銈囩矋/妫版垿浜炬稉?);
         }
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}閿涙details}";
             return (false, msg, null);
         }
     }
 
     /// <summary>
-    /// 鍚敤澶栭儴 Bot锛堝悜 Bot 鍙戦€?/start锛屽彲甯﹀弬鏁帮級銆?    /// 鏀寔锛欯xxxbot銆亁xxbot銆乭ttps://t.me/xxxbot銆乼g://resolve?domain=xxxbot&start=abc
+    /// 閸氼垳鏁ゆ径鏍劥 Bot閿涘牆鎮?Bot 閸欐垿鈧?/start閿涘苯褰茬敮锕€寮弫甯礆閵?    /// 閺€顖涘瘮閿涙xxxbot閵嗕簛xxbot閵嗕弓ttps://t.me/xxxbot閵嗕辜g://resolve?domain=xxxbot&start=abc
     /// </summary>
     public async Task<(bool Success, string? Error, string? BotUsername)> StartExternalBotAsync(
         int accountId,
@@ -954,7 +951,7 @@ public class AccountTelegramToolsService
             var finalStart = string.IsNullOrWhiteSpace(normalizedManualStart) ? startFromLink : normalizedManualStart;
 
             if (finalStart.Length > 64)
-                return (false, "鍚姩鍙傛暟杩囬暱锛堟渶澶?64 瀛楃锛?, null);
+                return (false, "閸氼垰濮╅崣鍌涙殶鏉╁洭鏆遍敍鍫熸付婢?64 鐎涙顑侀敍?, null);
 
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
@@ -962,7 +959,7 @@ public class AccountTelegramToolsService
             var resolved = await client.Contacts_ResolveUsername(username);
             var user = resolved.User;
             if (user.access_hash == 0)
-                return (false, "鏃犳硶鑾峰彇 Bot access_hash", null);
+                return (false, "閺冪姵纭堕懢宄板絿 Bot access_hash", null);
 
             var inputUser = new InputUser(user.id, user.access_hash);
             var randomId = Random.Shared.NextInt64();
@@ -976,22 +973,22 @@ public class AccountTelegramToolsService
         }
         catch (RpcException ex) when (ex.Code == 400 && string.Equals(ex.Message, "BOT_APP_INVALID", StringComparison.OrdinalIgnoreCase))
         {
-            return (false, "鐩爣涓嶆槸鍙惎鍔ㄧ殑 Bot锛圔OT_APP_INVALID锛?, null);
+            return (false, "閻╊喗鐖ｆ稉宥嗘Ц閸欘垰鎯庨崝銊ф畱 Bot閿涘湐OT_APP_INVALID閿?, null);
         }
         catch (RpcException ex) when (ex.Code == 400 && string.Equals(ex.Message, "PEER_FLOOD", StringComparison.OrdinalIgnoreCase))
         {
-            return (false, "瑙﹀彂椋庢帶锛圥EER_FLOOD锛夛紝璇烽檷浣庨鐜囧悗閲嶈瘯", null);
+            return (false, "鐟欙箑褰傛搴㈠付閿涘湧EER_FLOOD閿涘绱濈拠鐑芥娴ｅ酣顣堕悳鍥ф倵闁插秷鐦?, null);
         }
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}閿涙details}";
             return (false, msg, null);
         }
     }
 
     /// <summary>
-    /// 鍋滅敤澶栭儴 Bot锛堥€氳繃鎷夐粦 Bot 瀹炵幇锛夈€?    /// 鏀寔锛欯xxxbot銆亁xxbot銆乭ttps://t.me/xxxbot銆乼g://resolve?domain=xxxbot
+    /// 閸嬫粎鏁ゆ径鏍劥 Bot閿涘牓鈧俺绻冮幏澶愮拨 Bot 鐎圭偟骞囬敍澶堚偓?    /// 閺€顖涘瘮閿涙xxxbot閵嗕簛xxbot閵嗕弓ttps://t.me/xxxbot閵嗕辜g://resolve?domain=xxxbot
     /// </summary>
     public async Task<(bool Success, string? Error, string? BotUsername)> StopExternalBotAsync(
         int accountId,
@@ -1009,25 +1006,25 @@ public class AccountTelegramToolsService
             var resolved = await client.Contacts_ResolveUsername(username);
             var user = resolved.User;
             if (user.access_hash == 0)
-                return (false, "鏃犳硶鑾峰彇 Bot access_hash", null);
+                return (false, "閺冪姵纭堕懢宄板絿 Bot access_hash", null);
 
             await client.Contacts_Block(new InputPeerUser(user.id, user.access_hash));
             return (true, null, "@" + username);
         }
         catch (RpcException ex) when (ex.Code == 400 && string.Equals(ex.Message, "USER_NOT_MUTUAL_CONTACT", StringComparison.OrdinalIgnoreCase))
         {
-            // 鏌愪簺璐﹀彿鐘舵€佷笅浼氳繑鍥炶閿欒锛屾寜鈥滃凡鍋滅敤鈥濆鐞嗗彲閬垮厤鎵归噺浠诲姟涓柇銆?            return (true, null, null);
+            // 閺屾劒绨虹拹锕€褰块悩鑸碘偓浣风瑓娴兼俺绻戦崶鐐额嚉闁挎瑨顕ら敍灞惧瘻閳ユ粌鍑￠崑婊呮暏閳ユ繂顦╅悶鍡楀讲闁灝鍘ら幍褰掑櫤娴犺濮熸稉顓熸焽閵?            return (true, null, null);
         }
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}閿涙details}";
             return (false, msg, null);
         }
     }
 
     /// <summary>
-    /// 瑙ｆ瀽澶栭儴 Bot 浼氳瘽鐩爣锛堢敤浜庡悗缁彂閫佹秷鎭?绛夊緟鍥炲锛夈€?    /// 鏀寔锛欯xxxbot銆亁xxbot銆乭ttps://t.me/xxxbot銆乼g://resolve?domain=xxxbot&start=abc
+    /// 鐟欙絾鐎芥径鏍劥 Bot 娴兼俺鐦介惄顔界垼閿涘牏鏁ゆ禍搴℃倵缂侇厼褰傞柅浣圭Х閹?缁涘绶熼崶鐐差槻閿涘鈧?    /// 閺€顖涘瘮閿涙xxxbot閵嗕簛xxbot閵嗕弓ttps://t.me/xxxbot閵嗕辜g://resolve?domain=xxxbot&start=abc
     /// </summary>
     public async Task<(bool Success, string? Error, ResolvedChatTarget? Target, string? BotUsername)> ResolveExternalBotTargetAsync(
         int accountId,
@@ -1044,7 +1041,7 @@ public class AccountTelegramToolsService
             var resolved = await client.Contacts_ResolveUsername(username);
             var user = resolved.User;
             if (user.access_hash == 0)
-                return (false, "鏃犳硶鑾峰彇 Bot access_hash", null, null);
+                return (false, "閺冪姵纭堕懢宄板絿 Bot access_hash", null, null);
 
             var target = new ResolvedChatTarget(
                 new InputPeerUser(user.id, user.access_hash),
@@ -1055,7 +1052,7 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛寋details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}閿涘瘚details}";
             return (false, msg, null, null);
         }
     }
@@ -1063,9 +1060,9 @@ public class AccountTelegramToolsService
     public sealed record ResolvedChatTarget(InputPeer Peer, string Title, string CanonicalId);
 
     /// <summary>
-    /// 瑙ｆ瀽缇ょ粍/棰戦亾鐩爣锛屾敮鎸侊細
-    /// - 鐢ㄦ埛鍚?閾炬帴锛欯username銆乽sername銆乭ttps://t.me/xxx銆乼.me/xxx銆乼g://join?invite=hash
-    /// - 棰戦亾/缇ょ粍 ID锛?23456銆?123456銆?1001234567890
+    /// 鐟欙絾鐎界紘銈囩矋/妫版垿浜鹃惄顔界垼閿涘本鏁幐渚婄窗
+    /// - 閻劍鍩涢崥?闁剧偓甯撮敍娆痷sername閵嗕菇sername閵嗕弓ttps://t.me/xxx閵嗕辜.me/xxx閵嗕辜g://join?invite=hash
+    /// - 妫版垿浜?缂囥倗绮?ID閿?23456閵?123456閵?1001234567890
     /// </summary>
     public async Task<(bool Success, string? Error, ResolvedChatTarget? Target)> ResolveChatTargetAsync(
         int accountId,
@@ -1076,7 +1073,7 @@ public class AccountTelegramToolsService
         {
             var raw = (target ?? string.Empty).Trim();
             if (raw.Length == 0)
-                return (false, "鐩爣涓虹┖", null);
+                return (false, "閻╊喗鐖ｆ稉铏光敄", null);
 
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
@@ -1087,7 +1084,7 @@ public class AccountTelegramToolsService
                 if (resolvedById != null)
                     return (true, null, resolvedById);
 
-                return (false, $"鏈壘鍒?chatId={raw} 瀵瑰簲鐨勭兢缁?棰戦亾锛堣纭璇ヨ处鍙峰凡鍔犲叆鐩爣锛?, null);
+                return (false, $"閺堫亝澹橀崚?chatId={raw} 鐎电懓绨查惃鍕參缂?妫版垿浜鹃敍鍫ｎ嚞绾喛顓荤拠銉ㄥ閸欏嘲鍑￠崝鐘插弳閻╊喗鐖ｉ敍?, null);
             }
 
             var url = NormalizeTelegramJoinUrl(raw);
@@ -1102,7 +1099,7 @@ public class AccountTelegramToolsService
             };
 
             if (peer == null)
-                return (false, "鏃犳硶瑙ｆ瀽鐩爣缇ょ粍/棰戦亾", null);
+                return (false, "閺冪姵纭剁憴锝嗙€介惄顔界垼缂囥倗绮?妫版垿浜?, null);
 
             return chat switch
             {
@@ -1114,13 +1111,13 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}閿涙details}";
             return (false, msg, null);
         }
     }
 
     /// <summary>
-    /// 鍚戝凡瑙ｆ瀽鐨勭兢缁?棰戦亾鐩爣鍙戦€佹枃鏈秷鎭€?    /// </summary>
+    /// 閸氭垵鍑＄憴锝嗙€介惃鍕參缂?妫版垿浜鹃惄顔界垼閸欐垿鈧焦鏋冮張顒佺Х閹垬鈧?    /// </summary>
     public async Task<(bool Success, string? Error, int? MessageId)> SendMessageToResolvedChatAsync(
         int accountId,
         ResolvedChatTarget target,
@@ -1132,7 +1129,7 @@ public class AccountTelegramToolsService
         {
             var text = (message ?? string.Empty).Trim();
             if (text.Length == 0)
-                return (false, "娑堟伅鍐呭涓虹┖", null);
+                return (false, "濞戝牊浼呴崘鍛啇娑撹櫣鈹?, null);
 
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
@@ -1143,7 +1140,7 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}閿涙details}";
             return (false, msg, null);
         }
     }
@@ -1185,14 +1182,14 @@ public class AccountTelegramToolsService
                 cancellationToken);
 
             if (update == null)
-                return (false, $"绛夊緟楠岃瘉娑堟伅瓒呮椂锛坽timeoutSeconds} 绉掞級", null);
+                return (false, $"缁涘绶熸宀冪槈濞戝牊浼呯搾鍛閿涘澖timeoutSeconds} 缁夋帪绱?, null);
 
             if (messageFilter != null
                 && stopOnUnmatchedMention
                 && !messageFilter(update)
                 && IsMentionOrReply(update, currentUsername, sentMessageId))
             {
-                return (false, "楠岃瘉娑堟伅鏈懡涓叧閿瘝/姝ｅ垯锛屽凡璺宠繃", null);
+                return (false, "妤犲矁鐦夊☉鍫熶紖閺堫亜鎳℃稉顓炲彠闁款喛鐦?濮濓絽鍨敍灞藉嚒鐠哄疇绻?, null);
             }
 
             var candidate = await BuildVerificationCandidateAsync(
@@ -1203,7 +1200,7 @@ public class AccountTelegramToolsService
                 cancellationToken);
 
             return candidate == null
-                ? (false, "鍖归厤鍒扮殑楠岃瘉娑堟伅涓虹┖锛屾棤娉曟墽琛?AI 璇嗗埆", null)
+                ? (false, "閸栧綊鍘ら崚鎵畱妤犲矁鐦夊☉鍫熶紖娑撹櫣鈹栭敍灞炬￥濞夋洘澧界悰?AI 鐠囧棗鍩?, null)
                 : (true, null, candidate);
         }
         catch (OperationCanceledException)
@@ -1213,7 +1210,7 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}閿涙details}";
             return (false, msg, null);
         }
     }
@@ -1228,7 +1225,7 @@ public class AccountTelegramToolsService
         try
         {
             if (callbackData == null || callbackData.Length == 0)
-                return (false, "鎸夐挳缂哄皯 callback_data");
+                return (false, "閹稿鎸崇紓鍝勭毌 callback_data");
 
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
@@ -1249,7 +1246,7 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}閿涙details}";
             return (false, msg);
         }
     }
@@ -1524,24 +1521,24 @@ public class AccountTelegramToolsService
         if (text.Length == 0)
             return false;
 
-        if (ContainsAny(text, "鍨冨溇骞垮憡", "骞垮憡", "涓嶄簣澶勭悊", "宸插垹闄?, "杩濊", "灏佺")
-            && !ContainsAny(text, "楠岃瘉", "楠岃瘉鐮?, "鏍￠獙", "captcha"))
+        if (ContainsAny(text, "閸ㄥ啫婧囬獮鍨啞", "楠炲灝鎲?, "娑撳秳绨ｆ径鍕倞", "瀹告彃鍨归梽?, "鏉╂繆顫?, "鐏忎胶顩?)
+            && !ContainsAny(text, "妤犲矁鐦?, "妤犲矁鐦夐惍?, "閺嶏繝鐛?, "captcha"))
         {
             return false;
         }
 
         if (ContainsAny(text,
-                "楠岃瘉",
-                "楠岃瘉鐮?,
-                "鏍￠獙",
-                "璇烽€夋嫨",
-                "鐐瑰嚮",
-                "鎸夐挳",
-                "瀹屾垚楠岃瘉",
-                "璇峰洖澶?,
-                "绛旀",
-                "绠楀紡",
-                "绛変簬澶氬皯",
+                "妤犲矁鐦?,
+                "妤犲矁鐦夐惍?,
+                "閺嶏繝鐛?,
+                "鐠囩兘鈧瀚?,
+                "閻愮懓鍤?,
+                "閹稿鎸?,
+                "鐎瑰本鍨氭宀冪槈",
+                "鐠囧嘲娲栨径?,
+                "缁涙梹顢?,
+                "缁犳绱?,
+                "缁涘绨径姘毌",
                 "reply",
                 "captcha"))
         {
@@ -1567,9 +1564,9 @@ public class AccountTelegramToolsService
                || text.IndexOf('-') >= 0
                || text.IndexOf('*') >= 0
                || text.IndexOf('/') >= 0
-               || text.Contains("脳", StringComparison.Ordinal)
-               || text.Contains("梅", StringComparison.Ordinal)
-               || text.Contains("锛?, StringComparison.Ordinal)
+               || text.Contains("鑴?, StringComparison.Ordinal)
+               || text.Contains("姊?, StringComparison.Ordinal)
+               || text.Contains("閿?, StringComparison.Ordinal)
                || text.IndexOf('=') >= 0;
     }
 
@@ -1709,7 +1706,7 @@ public class AccountTelegramToolsService
     {
         var s = (input ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(s))
-            throw new ArgumentException("閾炬帴/鐢ㄦ埛鍚嶄负绌?, nameof(input));
+            throw new ArgumentException("闁剧偓甯?閻劍鍩涢崥宥勮礋缁?, nameof(input));
 
         // tg://join?invite=xxxx
         if (s.StartsWith("tg://", StringComparison.OrdinalIgnoreCase))
@@ -1728,7 +1725,7 @@ public class AccountTelegramToolsService
             }
         }
 
-        // 鐩存帴鏄?t.me/xxx
+        // 閻╁瓨甯撮弰?t.me/xxx
         if (s.StartsWith("t.me/", StringComparison.OrdinalIgnoreCase) || s.StartsWith("telegram.me/", StringComparison.OrdinalIgnoreCase))
             return "https://" + s;
 
@@ -1746,7 +1743,7 @@ public class AccountTelegramToolsService
     {
         var s = (input ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(s))
-            throw new ArgumentException("Bot 鐢ㄦ埛鍚嶄负绌?, nameof(input));
+            throw new ArgumentException("Bot 閻劍鍩涢崥宥勮礋缁?, nameof(input));
 
         string startFromLink = string.Empty;
 
@@ -1761,7 +1758,7 @@ public class AccountTelegramToolsService
                 startFromLink = NormalizeBotStartParameter(start);
         }
 
-        // https://t.me/xxxbot?start=abc 鎴?t.me/xxxbot?start=abc
+        // https://t.me/xxxbot?start=abc 閹?t.me/xxxbot?start=abc
         if (s.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
             || s.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
             || s.StartsWith("t.me/", StringComparison.OrdinalIgnoreCase)
@@ -1769,12 +1766,12 @@ public class AccountTelegramToolsService
         {
             var url = s.Contains("://", StringComparison.Ordinal) ? s : "https://" + s;
             if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
-                throw new ArgumentException("Bot 閾炬帴鏍煎紡鏃犳晥", nameof(input));
+                throw new ArgumentException("Bot 闁剧偓甯撮弽鐓庣础閺冪姵鏅?, nameof(input));
 
             var path = (uri.AbsolutePath ?? string.Empty).Trim('/');
             var firstSeg = path.Split('/', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? string.Empty;
             if (string.IsNullOrWhiteSpace(firstSeg))
-                throw new ArgumentException("Bot 閾炬帴涓己灏戠敤鎴峰悕", nameof(input));
+                throw new ArgumentException("Bot 闁剧偓甯存稉顓犲繁鐏忔垹鏁ら幋宄版倳", nameof(input));
 
             s = firstSeg;
 
@@ -1785,7 +1782,7 @@ public class AccountTelegramToolsService
 
         s = s.Trim().TrimStart('@');
 
-        // 鏀寔锛欯username?start=abc锛堟棤 http/tg 鍗忚锛?        var question = s.IndexOf('?');
+        // 閺€顖涘瘮閿涙username?start=abc閿涘牊妫?http/tg 閸楀繗顔呴敍?        var question = s.IndexOf('?');
         if (question >= 0)
         {
             var query = ParseQueryString(s[(question + 1)..]);
@@ -1800,19 +1797,18 @@ public class AccountTelegramToolsService
             s = s[..slash];
 
         if (string.IsNullOrWhiteSpace(s))
-            throw new ArgumentException("Bot 鐢ㄦ埛鍚嶄负绌?, nameof(input));
+            throw new ArgumentException("Bot 閻劍鍩涢崥宥勮礋缁?, nameof(input));
 
         if (s.StartsWith("+", StringComparison.Ordinal))
-            throw new ArgumentException("閭€璇烽摼鎺ヤ笉鏄?Bot 鐢ㄦ埛鍚嶏紝璇疯緭鍏?@xxxbot 鎴?t.me/xxxbot", nameof(input));
+            throw new ArgumentException("闁偓鐠囩兘鎽奸幒銉ょ瑝閺?Bot 閻劍鍩涢崥宥忕礉鐠囩柉绶崗?@xxxbot 閹?t.me/xxxbot", nameof(input));
 
         if (!System.Text.RegularExpressions.Regex.IsMatch(s, "^[A-Za-z0-9_]{5,64}$"))
-            throw new ArgumentException("Bot 鐢ㄦ埛鍚嶆牸寮忔棤鏁?, nameof(input));
+            throw new ArgumentException("Bot 閻劍鍩涢崥宥嗙壐瀵繑妫ら弫?, nameof(input));
 
-        // 甯歌鎯呭喌锛氳姹備互 bot 缁撳熬
-        // 渚嬪锛?        // 1) 鏄惧紡缁欎簡 start 鍙傛暟锛堝父瑙佷簬 t.me/xxx?start=abc 鎴?@xxx?start=abc锛?        // 2) 璋冪敤鏂规槑纭€滄寜 Bot 澶勭悊鈥?        if (!s.EndsWith("bot", StringComparison.OrdinalIgnoreCase)
+        // 鐢瓕顫夐幆鍛枌閿涙俺顩﹀Ч鍌欎簰 bot 缂佹挸鐔?        // 娓氬顦婚敍?        // 1) 閺勬儳绱＄紒娆庣啊 start 閸欏倹鏆熼敍鍫濈埗鐟欎椒绨?t.me/xxx?start=abc 閹?@xxx?start=abc閿?        // 2) 鐠嬪啰鏁ら弬瑙勬绾喒鈧粍瀵?Bot 婢跺嫮鎮婇垾?        if (!s.EndsWith("bot", StringComparison.OrdinalIgnoreCase)
             && string.IsNullOrWhiteSpace(startFromLink)
             && !assumeBotUsername)
-            throw new ArgumentException("鐩爣鐪嬭捣鏉ヤ笉鏄?Bot 鐢ㄦ埛鍚嶏紙闇€浠?bot 缁撳熬锛?, nameof(input));
+            throw new ArgumentException("閻╊喗鐖ｉ惇瀣崳閺夈儰绗夐弰?Bot 閻劍鍩涢崥宥忕礄闂団偓娴?bot 缂佹挸鐔敍?, nameof(input));
 
         return (s, startFromLink);
     }
@@ -1863,7 +1859,7 @@ public class AccountTelegramToolsService
     }
 
     /// <summary>
-    /// 鏇存柊褰撳墠璐﹀彿澶村儚锛堥潤鎬佸浘鐗囷級銆?    /// </summary>
+    /// 閺囧瓨鏌婅ぐ鎾冲鐠愶箑褰挎径鏉戝剼閿涘牓娼ら幀浣告禈閻楀浄绱氶妴?    /// </summary>
     public async Task<(bool Success, string? Error)> UpdateProfilePhotoAsync(
         int accountId,
         Stream fileStream,
@@ -1873,7 +1869,7 @@ public class AccountTelegramToolsService
         try
         {
             if (fileStream == null)
-                return (false, "澶村儚鏂囦欢涓虹┖");
+                return (false, "婢舵潙鍎氶弬鍥︽娑撹櫣鈹?);
 
             fileName = (fileName ?? "avatar.jpg").Trim();
             if (string.IsNullOrWhiteSpace(fileName))
@@ -1887,19 +1883,19 @@ public class AccountTelegramToolsService
             cancellationToken.ThrowIfCancellationRequested();
 
             if (inputFile == null)
-                return (false, "澶村儚涓婁紶澶辫触锛氫笂浼犵粨鏋滀负绌?);
+                return (false, "婢舵潙鍎氭稉濠佺炊婢惰精瑙﹂敍姘瑐娴肩姷绮ㄩ弸婊€璐熺粚?);
 
             await client.Photos_UploadProfilePhoto(inputFile, video: null, video_start_ts: null, video_emoji_markup: null, bot: null, fallback: false);
             return (true, null);
         }
         catch (UnknownImageFormatException)
         {
-            return (false, "澶村儚涓婁紶澶辫触锛氫笉鏀寔鐨勫浘鐗囨牸寮忥紙寤鸿浣跨敤 JPG/PNG锛?);
+            return (false, "婢舵潙鍎氭稉濠佺炊婢惰精瑙﹂敍姘瑝閺€顖涘瘮閻ㄥ嫬娴橀悧鍥ㄧ壐瀵骏绱欏楦款唴娴ｈ法鏁?JPG/PNG閿?);
         }
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}閿涙details}";
             return (false, msg);
         }
     }
@@ -1951,7 +1947,7 @@ public class AccountTelegramToolsService
                 return existing;
 
             var account = await _accountManagement.GetAccountAsync(accountId)
-                ?? throw new InvalidOperationException($"璐﹀彿涓嶅瓨鍦細{accountId}");
+                ?? throw new InvalidOperationException($"Account does not exist: {accountId}");
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -1960,7 +1956,7 @@ public class AccountTelegramToolsService
             var sessionKey = ResolveSessionKey(account, apiHash);
 
             if (string.IsNullOrWhiteSpace(account.SessionPath))
-                throw new InvalidOperationException("璐﹀彿缂哄皯 SessionPath锛屾棤娉曞垱寤?Telegram 瀹㈡埛绔?");
+                throw new InvalidOperationException("The account is missing SessionPath and cannot connect to Telegram.");
 
             var absoluteSessionPath = Path.GetFullPath(account.SessionPath);
             if (File.Exists(absoluteSessionPath) && SessionDataConverter.LooksLikeSqliteSession(absoluteSessionPath))
@@ -1972,14 +1968,12 @@ public class AccountTelegramToolsService
                     apiId: account.ApiId,
                     apiHash: account.ApiHash,
                     sqliteSessionPath: absoluteSessionPath,
-                    logger: _logger
-                );
+                    logger: _logger);
 
                 if (!converted.Ok)
                 {
                     throw new InvalidOperationException(
-                        $"璇ヨ处鍙风殑 Session 鏂囦欢涓?SQLite 鏍煎紡锛歿account.SessionPath}锛屾棤娉曡嚜鍔ㄨ浆鎹负鍙敤 session銆? +
-                        $"鍘熷洜锛歿converted.Reason}銆傚缓璁細閲嶆柊瀵煎叆鍖呭惈 session_string 鐨?json锛屾垨鍒般€愯处鍙?鎵嬫満鍙风櫥褰曘€戦噸鏂扮櫥褰曠敓鎴愭柊鐨?sessions/*.session銆?");
+                        $"The account session file is SQLite format and could not be converted automatically: {account.SessionPath}. Reason: {converted.Reason}");
                 }
             }
 
@@ -1999,23 +1993,24 @@ public class AccountTelegramToolsService
             {
                 await ExecuteTelegramRequestAsync(
                     accountId,
-                    "杩炴帴 Telegram",
+                    "Connect Telegram",
                     () => client.ConnectAsync(),
                     cancellationToken,
                     resetClientOnTimeout: true);
                 cancellationToken.ThrowIfCancellationRequested();
+
                 if (client.User == null && (client.UserId != 0 || account.UserId != 0))
                 {
                     await ExecuteTelegramRequestAsync(
                         accountId,
-                        "鎭㈠ Telegram 鐧诲綍鐘舵€?",
+                        "Resume Telegram login",
                         () => client.LoginUserIfNeeded(reloginOnFailedResume: false),
                         cancellationToken,
                         resetClientOnTimeout: true);
                 }
 
                 if (client.User == null)
-                    throw new InvalidOperationException("璐﹀彿鏈櫥褰曟垨 session 宸插け鏁堬紝璇烽噸鏂扮櫥褰曠敓鎴愭柊鐨?session");
+                    throw new InvalidOperationException("The account is not logged in or the session is invalid. Please log in again.");
 
                 return client;
             }
@@ -2031,36 +2026,15 @@ public class AccountTelegramToolsService
                 if (LooksLikeSessionApiMismatchOrCorrupted(ex))
                 {
                     throw new InvalidOperationException(
-                        "璇ヨ处鍙风殑 Session 鏂囦欢鏃犳硶瑙ｆ瀽锛堥€氬父鏄?ApiId/ApiHash 涓庣敓鎴?session 鏃朵笉涓€鑷达紝鎴?session 鏂囦欢宸叉崯鍧忥級銆? +
-                        "璇峰埌銆愯处鍙?鎵嬫満鍙风櫥褰曘€戦噸鏂扮櫥褰曠敓鎴愭柊鐨?sessions/*.session 鍚庡啀璇曘€?",
+                        "The account session file could not be parsed. This usually means ApiId/ApiHash does not match the original session, or the session file is corrupted.",
                         ex);
                 }
 
-                throw new InvalidOperationException($"Telegram 浼氳瘽鍔犺浇澶辫触锛歿ex.Message}", ex);
+                throw new InvalidOperationException($"Telegram session bootstrap failed: {ex.Message}", ex);
             }
         }
 
-        throw new InvalidOperationException($"Telegram 浼氳瘽鍔犺浇澶辫触锛歿lastError?.Message}");
-    }
-
-    private static bool IsRetryableTelegramBootstrapException(Exception ex, CancellationToken cancellationToken)
-    {
-        if (cancellationToken.IsCancellationRequested)
-            return false;
-
-        if (ex is TimeoutException)
-            return true;
-
-        if (ex is ObjectDisposedException disposed && disposed.ObjectName?.Contains("SemaphoreSlim", StringComparison.OrdinalIgnoreCase) == true)
-            return true;
-
-        if (ex is OperationCanceledException)
-            return true;
-
-        var message = ex.ToString();
-        return message.Contains("A task was canceled", StringComparison.OrdinalIgnoreCase)
-               || message.Contains("SemaphoreSlim", StringComparison.OrdinalIgnoreCase)
-               || message.Contains("Cannot access a disposed object", StringComparison.OrdinalIgnoreCase);
+        throw new InvalidOperationException($"Telegram session bootstrap failed: {lastError?.Message}", lastError);
     }
 
     private TimeSpan GetTelegramRequestTimeout()
@@ -2095,7 +2069,7 @@ public class AccountTelegramToolsService
             if (resetClientOnTimeout)
                 await _clientPool.RemoveClientAsync(accountId);
 
-            throw new TimeoutException($"Telegram 璇锋眰瓒呮椂锛歿operation} 瓒呰繃 {timeout.TotalSeconds:0} 绉掞紝鍙兘鏄?Session 澶辨晥銆佽处鍙峰彈闄愩€佺綉缁滃紓甯告垨浠ｇ悊寮傚父");
+            throw new TimeoutException($"Telegram 鐠囬攱鐪扮搾鍛閿涙operation} 鐡掑懓绻?{timeout.TotalSeconds:0} 缁夋帪绱濋崣顖濆厴閺?Session 婢惰鲸鏅ラ妴浣藉閸欏嘲褰堥梽鎰┾偓浣虹秹缂佹粌绱撶敮鍛婂灗娴狅絿鎮婂鍌氱埗");
         }
     }
 
@@ -2123,7 +2097,7 @@ public class AccountTelegramToolsService
             if (resetClientOnTimeout)
                 await _clientPool.RemoveClientAsync(accountId);
 
-            throw new TimeoutException($"Telegram 璇锋眰瓒呮椂锛歿operation} 瓒呰繃 {timeout.TotalSeconds:0} 绉掞紝鍙兘鏄?Session 澶辨晥銆佽处鍙峰彈闄愩€佺綉缁滃紓甯告垨浠ｇ悊寮傚父");
+            throw new TimeoutException($"Telegram 鐠囬攱鐪扮搾鍛閿涙operation} 鐡掑懓绻?{timeout.TotalSeconds:0} 缁夋帪绱濋崣顖濆厴閺?Session 婢惰鲸鏅ラ妴浣藉閸欏嘲褰堥梽鎰┾偓浣虹秹缂佹粌绱撶敮鍛婂灗娴狅絿鎮婂鍌氱埗");
         }
     }
 
@@ -2133,7 +2107,7 @@ public class AccountTelegramToolsService
             return globalApiId;
         if (account.ApiId > 0)
             return account.ApiId;
-        throw new InvalidOperationException("鏈厤缃叏灞€ ApiId锛屼笖璐﹀彿缂哄皯 ApiId");
+        throw new InvalidOperationException("閺堫亪鍘ょ純顔煎弿鐏炩偓 ApiId閿涘奔绗栫拹锕€褰跨紓鍝勭毌 ApiId");
     }
 
     private string ResolveApiHash(Account account)
@@ -2143,7 +2117,7 @@ public class AccountTelegramToolsService
             return global.Trim();
         if (!string.IsNullOrWhiteSpace(account.ApiHash))
             return account.ApiHash.Trim();
-        throw new InvalidOperationException("鏈厤缃叏灞€ ApiHash锛屼笖璐﹀彿缂哄皯 ApiHash");
+        throw new InvalidOperationException("閺堫亪鍘ょ純顔煎弿鐏炩偓 ApiHash閿涘奔绗栫拹锕€褰跨紓鍝勭毌 ApiHash");
     }
 
     private static string ResolveSessionKey(Account account, string apiHash)
@@ -2169,13 +2143,13 @@ public class AccountTelegramToolsService
         if (profile.IsFake) flags.Add("Fake");
         if (profile.IsDeleted) flags.Add("Deleted");
 
-        var flagText = flags.Count == 0 ? "鏃? : string.Join(", ", flags);
-        return $"鏄电О锛歿profile.DisplayName}锛涚敤鎴峰悕锛歿profile.Username ?? "-"}锛沀serId锛歿profile.UserId}锛涙爣璁帮細{flagText}";
+        var flagText = flags.Count == 0 ? "閺? : string.Join(", ", flags);
+        return $"閺勭數袨閿涙profile.DisplayName}閿涙稓鏁ら幋宄版倳閿涙profile.Username ?? "-"}閿涙瞼serId閿涙profile.UserId}閿涙稒鐖ｇ拋甯窗{flagText}";
     }
 
     private async Task<CreateChannelProbeResult> ProbeCreateChannelCapabilityAsync(Client client, int accountId, CancellationToken cancellationToken = default)
     {
-        // 娉ㄦ剰锛氳繖鏄€滄繁搴︽帰娴嬧€濓紝浼氬垱寤哄苟鍒犻櫎涓€涓祴璇曢閬撱€?        var title = $"tp-check-{DateTime.UtcNow:MMddHHmmss}";
+        // 濞夈劍鍓伴敍姘崇箹閺勵垪鈧粍绻佹惔锔藉赴濞村鈧繐绱濇导姘灡瀵ゅ搫鑻熼崚鐘绘珟娑撯偓娑擃亝绁寸拠鏇㈩暥闁挶鈧?        var title = $"tp-check-{DateTime.UtcNow:MMddHHmmss}";
         const string about = "Telegram Panel create-channel probe (auto delete)";
 
         try
@@ -2187,28 +2161,28 @@ public class AccountTelegramToolsService
             {
                 updates = await ExecuteTelegramRequestAsync(
                     accountId,
-                    "鍒涘缓娴嬭瘯棰戦亾鎺㈡祴璐﹀彿鐘舵€?,
+                    "閸掓稑缂撳ù瀣槸妫版垿浜鹃幒銏＄ゴ鐠愶箑褰块悩鑸碘偓?,
                     () => client.Channels_CreateChannel(title: title, about: about, broadcast: true),
                     cancellationToken,
                     resetClientOnTimeout: true);
             }
             catch (RpcException ex) when (ex.Code == 420 && string.Equals(ex.Message, "FROZEN_METHOD_INVALID", StringComparison.OrdinalIgnoreCase))
             {
-                return new CreateChannelProbeResult(false, true, "璐﹀彿/ApiId 鍙楅檺锛歍elegram 杩斿洖 FROZEN_METHOD_INVALID锛堝垱寤洪閬撴帴鍙ｈ鍐荤粨锛?);
+                return new CreateChannelProbeResult(false, true, "鐠愶箑褰?ApiId 閸欐妾洪敍姝峞legram 鏉╂柨娲?FROZEN_METHOD_INVALID閿涘牆鍨卞娲暥闁挻甯撮崣锝堫潶閸愯崵绮ㄩ敍?);
             }
 
             cancellationToken.ThrowIfCancellationRequested();
 
             var channel = updates.Chats.Values.OfType<TL.Channel>().FirstOrDefault();
             if (channel == null)
-                return new CreateChannelProbeResult(false, false, "鍒涘缓娴嬭瘯棰戦亾澶辫触锛氭湭杩斿洖 Channel");
+                return new CreateChannelProbeResult(false, false, "閸掓稑缂撳ù瀣槸妫版垿浜炬径杈Е閿涙碍婀潻鏂挎礀 Channel");
 
             try
             {
-                // 绔嬪嵆鍒犻櫎锛岄伩鍏嶇暀涓嬪瀮鍦鹃閬?                var input = new InputChannel(channel.id, channel.access_hash);
+                // 缁斿宓嗛崚鐘绘珟閿涘矂浼╅崗宥囨殌娑撳鐎崷楣冾暥闁?                var input = new InputChannel(channel.id, channel.access_hash);
                 await ExecuteTelegramRequestAsync(
                     accountId,
-                    $"鍒犻櫎娴嬭瘯棰戦亾({channel.id})",
+                    $"閸掔娀娅庡ù瀣槸妫版垿浜?{channel.id})",
                     () => client.Channels_DeleteChannel(input),
                     cancellationToken,
                     resetClientOnTimeout: false);
@@ -2216,14 +2190,14 @@ public class AccountTelegramToolsService
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Probe channel created but failed to delete (account {AccountId}, channel {ChannelId})", accountId, channel.id);
-                return new CreateChannelProbeResult(false, false, $"鍒涘缓娴嬭瘯棰戦亾鎴愬姛锛屼絾鍒犻櫎澶辫触锛歿ex.Message}锛堣鎵嬪姩鍒犻櫎棰戦亾锛歿title}锛?);
+                return new CreateChannelProbeResult(false, false, $"閸掓稑缂撳ù瀣槸妫版垿浜鹃幋鎰閿涘奔绲鹃崚鐘绘珟婢惰精瑙﹂敍姝縠x.Message}閿涘牐顕幍瀣З閸掔娀娅庢０鎴︿壕閿涙title}閿?);
             }
 
-            return new CreateChannelProbeResult(true, false, "鍙敤");
+            return new CreateChannelProbeResult(true, false, "閸欘垳鏁?);
         }
         catch (Exception ex)
         {
-            var msg = ex.Message ?? "鏈煡閿欒";
+            var msg = ex.Message ?? "閺堫亞鐓￠柨娆掝嚖";
             return new CreateChannelProbeResult(false, false, msg);
         }
     }
@@ -2231,7 +2205,7 @@ public class AccountTelegramToolsService
     private sealed record CreateChannelProbeResult(bool Success, bool IsFrozen, string Message);
 
     /// <summary>
-    /// 灏?Telegram 寮傚父鏄犲皠涓哄彲璇荤殑鎽樿鍜岃鎯呫€?    /// </summary>
+    /// 鐏?Telegram 瀵倸鐖堕弰鐘茬殸娑撳搫褰茬拠鑽ゆ畱閹芥顩﹂崪宀冾嚊閹懌鈧?    /// </summary>
     private static bool IsBotCallbackTimeout(Exception ex)
     {
         var msg = ex.Message ?? string.Empty;
@@ -2243,71 +2217,62 @@ public class AccountTelegramToolsService
         var msg = ex.Message ?? string.Empty;
 
         if (ex is TimeoutException
-            || msg.Contains("璇锋眰瓒呮椂", StringComparison.OrdinalIgnoreCase)
             || msg.Contains("timed out", StringComparison.OrdinalIgnoreCase)
             || msg.Contains("timeout", StringComparison.OrdinalIgnoreCase))
-            return ("璇锋眰瓒呮椂", msg);
+            return ("连接超时", msg);
 
         if (msg.Contains("EMAIL_HASH_EXPIRED", StringComparison.OrdinalIgnoreCase))
-            return (
-                "閭楠岃瘉鐮佸凡杩囨湡锛圗MAIL_HASH_EXPIRED锛?,
-                "璇风偣鍑烩€滈噸鍙戦獙璇佺爜鈥濓紝骞朵娇鐢ㄦ渶鏂伴偖浠朵腑鐨勯獙璇佺爜銆? + Environment.NewLine + msg);
+            return ("邮箱验证码已过期", msg);
 
         if (msg.Contains("EMAIL_NOT_SETUP", StringComparison.OrdinalIgnoreCase))
-            return ("鐧诲綍閭鏈惎鐢紙EMAIL_NOT_SETUP锛?, "璇ヨ处鍙锋湭澶勪簬鍙缃?鍙彉鏇寸櫥褰曢偖绠辩殑鐘舵€侊紙閫氬父闇€瑕佺櫥褰曟祦绋嬭Е鍙戣缃級銆? + Environment.NewLine + msg);
+            return ("邮箱验证未启用", msg);
 
         if (msg.Contains("EMAIL_UNCONFIRMED", StringComparison.OrdinalIgnoreCase))
-        {
-            var m = System.Text.RegularExpressions.Regex.Match(msg, "(EMAIL_UNCONFIRMED(?:_[A-Z0-9]+)?)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            var code = m.Success ? m.Groups[1].Value.ToUpperInvariant() : "EMAIL_UNCONFIRMED";
-            return (
-                $"閭鏈‘璁わ紙{code}锛?,
-                "璇峰湪闈㈡澘杈撳叆閭鏀跺埌鐨勯獙璇佺爜杩涜纭锛涘鎻愮ず杩囨湡璇烽噸鍙戝苟浣跨敤鏈€鏂伴獙璇佺爜銆? + Environment.NewLine + msg);
-        }
+            return ("邮箱未确认", msg);
 
         if (msg.Contains("EMAIL_TOKEN_INVALID", StringComparison.OrdinalIgnoreCase))
-            return ("閭楠岃瘉鐮侀敊璇紙EMAIL_TOKEN_INVALID锛?, "楠岃瘉鐮佷笉姝ｇ‘鎴栦笉鏄渶鏂伴獙璇佺爜銆傝鐐瑰嚮鈥滈噸鍙戦獙璇佺爜鈥濓紝骞朵娇鐢ㄦ渶鏂伴偖浠朵腑鐨勯獙璇佺爜銆? + Environment.NewLine + msg);
+            return ("邮箱验证码无效", msg);
 
         if (msg.Contains("EMAIL_INVALID", StringComparison.OrdinalIgnoreCase))
-            return ("閭鏃犳晥锛圗MAIL_INVALID锛?, msg);
+            return ("邮箱格式无效", msg);
 
         if (msg.Contains("EMAIL_NOT_ALLOWED", StringComparison.OrdinalIgnoreCase))
-            return ("閭涓嶅厑璁镐娇鐢紙EMAIL_NOT_ALLOWED锛?, msg);
+            return ("邮箱不允许使用", msg);
 
         if (msg.Contains("FROZEN_METHOD_INVALID", StringComparison.OrdinalIgnoreCase))
-            return ("璐﹀彿琚喕缁擄紙FROZEN_METHOD_INVALID锛?, "Telegram 鎻愮ず璇ヨ处鍙?ApiId 鐨勬煇浜涙帴鍙ｈ鍐荤粨锛堝父瑙佷负鍒涘缓棰戦亾鎺ュ彛锛夈€? + Environment.NewLine + msg);
+            return ("账号接口被冻结", msg);
 
         if (msg.Contains("FLOOD_WAIT", StringComparison.OrdinalIgnoreCase))
-            return ("瑙﹀彂闄愭祦锛團LOOD_WAIT锛?, msg);
+            return ("触发限流", msg);
 
         if (msg.Contains("CHANNEL_MONOFORUM_UNSUPPORTED", StringComparison.OrdinalIgnoreCase))
-            return ("缇ょ粍鎺ュ彛涓嶆敮鎸侊紙CHANNEL_MONOFORUM_UNSUPPORTED锛?, msg);
+            return ("群组接口不支持", msg);
 
         if (msg.Contains("AUTH_KEY_UNREGISTERED", StringComparison.OrdinalIgnoreCase))
-            return ("Session 澶辨晥锛圓UTH_KEY_UNREGISTERED锛?, msg);
+            return ("Session 失效", msg);
 
         if (msg.Contains("AUTH_KEY_DUPLICATED", StringComparison.OrdinalIgnoreCase))
-            return ("Session 鍐茬獊锛圓UTH_KEY_DUPLICATED锛?, "璇?Session 鍙兘鍦ㄥ叾浠栬澶?搴旂敤涓婂悓鏃朵娇鐢紝瀵艰嚧瀵嗛挜鍐茬獊銆? + Environment.NewLine + msg);
+            return ("Session 冲突", msg);
 
         if (msg.Contains("SESSION_REVOKED", StringComparison.OrdinalIgnoreCase))
-            return ("Session 宸茶鎾ら攢锛圫ESSION_REVOKED锛?, "璇?Session 宸茶娉ㄩ攢鎴栨挙閿€锛岄渶瑕侀噸鏂扮櫥褰曘€? + Environment.NewLine + msg);
+            return ("Session 已撤销", msg);
 
         if (msg.Contains("SESSION_PASSWORD_NEEDED", StringComparison.OrdinalIgnoreCase))
-            return ("闇€瑕佷袱姝ラ獙璇佸瘑鐮侊紙SESSION_PASSWORD_NEEDED锛?, msg);
+            return ("需要两步验证密码", msg);
 
         if (msg.Contains("CODE_INVALID", StringComparison.OrdinalIgnoreCase))
-            return ("楠岃瘉鐮侀敊璇紙CODE_INVALID锛?, "楠岃瘉鐮佷笉姝ｇ‘鎴栦笉鏄渶鏂伴獙璇佺爜銆傝鐐瑰嚮鈥滈噸鍙戦獙璇佺爜鈥濓紝骞朵娇鐢ㄦ渶鏂伴偖浠朵腑鐨勯獙璇佺爜銆? + Environment.NewLine + msg);
+            return ("验证码错误", msg);
 
         if (msg.Contains("PHOTO_FILE_MISSING", StringComparison.OrdinalIgnoreCase))
-            return ("澶村儚涓婁紶澶辫触锛圥HOTO_FILE_MISSING锛?, msg);
+            return ("头像上传失败", msg);
 
         if (msg.Contains("PHONE_NUMBER_BANNED", StringComparison.OrdinalIgnoreCase)
             || msg.Contains("USER_DEACTIVATED_BAN", StringComparison.OrdinalIgnoreCase))
-            return ("璐﹀彿琚皝绂?鍋滅敤", msg);
+            return ("账号被封禁", msg);
 
         if (msg.Contains("Can't read session block", StringComparison.OrdinalIgnoreCase))
-            return ("Session 鏃犳硶璇诲彇锛圓piHash/Key 涓嶅尮閰嶆垨鎹熷潖锛?, msg);
+            return ("Session 无法读取", msg);
 
-        return ("杩炴帴澶辫触", msg);
+        return ("连接失败", msg);
     }
 }
