@@ -1,10 +1,24 @@
+﻿using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 
 namespace TelegramPanel.Module.BotCheckinAssistant.Services;
 
+public enum BotCheckinScriptStepKind
+{
+    SendMessage = 0,
+    ClickButton = 1
+}
+
+public sealed record BotCheckinScriptStep(BotCheckinScriptStepKind Kind, string Value)
+{
+    public string DisplayText => Kind == BotCheckinScriptStepKind.ClickButton ? $"按钮: {Value}" : Value;
+}
+
 public sealed class BotCheckinTaskConfig
 {
+    private const string ButtonStepPrefix = "按钮:";
+
     public string TaskName { get; set; } = string.Empty;
     public string BotTarget { get; set; } = string.Empty;
     public string StartParameter { get; set; } = string.Empty;
@@ -82,7 +96,7 @@ public sealed class BotCheckinTaskConfig
         TaskName = (TaskName ?? string.Empty).Trim();
         BotTarget = (BotTarget ?? string.Empty).Trim();
         StartParameter = (StartParameter ?? string.Empty).Trim();
-        MessageScript = MessageScript ?? string.Empty;
+        MessageScript = NormalizeScript(MessageScript);
         WaitTimeoutSeconds = NormalizeWaitTimeout(WaitTimeoutSeconds);
         DelayBetweenAccountsSeconds = NormalizeDelay(DelayBetweenAccountsSeconds);
         RandomDelayMinSeconds = NormalizeDelay(RandomDelayMinSeconds);
@@ -90,14 +104,22 @@ public sealed class BotCheckinTaskConfig
         SelectedAccountIds = NormalizeAccountIds(SelectedAccountIds);
     }
 
+    public IReadOnlyList<BotCheckinScriptStep> GetSteps()
+    {
+        return ParseSteps(MessageScript);
+    }
+
     public IReadOnlyList<string> GetMessages()
     {
-        return ParseMessages(MessageScript);
+        return GetSteps()
+            .Where(x => x.Kind == BotCheckinScriptStepKind.SendMessage)
+            .Select(x => x.Value)
+            .ToList();
     }
 
     public int GetTotalOperations()
     {
-        return GetMessages().Count * NormalizeAccountIds(SelectedAccountIds).Count;
+        return GetSteps().Count * NormalizeAccountIds(SelectedAccountIds).Count;
     }
 
     public string? Validate()
@@ -107,9 +129,12 @@ public sealed class BotCheckinTaskConfig
         if (string.IsNullOrWhiteSpace(BotTarget))
             return "Please fill in the bot username or link first.";
 
-        var messages = GetMessages();
-        if (messages.Count == 0)
-            return "Please enter at least one message to send.";
+        var steps = GetSteps();
+        if (steps.Count == 0)
+            return "Please enter at least one step to execute.";
+
+        if (steps.Any(x => string.IsNullOrWhiteSpace(x.Value)))
+            return "Script contains an empty message or button action.";
 
         if (SelectedAccountIds.Count == 0)
             return "Please select at least one account.";
@@ -146,14 +171,43 @@ public sealed class BotCheckinTaskConfig
 
     public static List<string> ParseMessages(string? raw)
     {
+        return ParseSteps(raw)
+            .Where(x => x.Kind == BotCheckinScriptStepKind.SendMessage)
+            .Select(x => x.Value)
+            .ToList();
+    }
+
+    public static List<BotCheckinScriptStep> ParseSteps(string? raw)
+    {
         if (string.IsNullOrWhiteSpace(raw))
-            return new List<string>();
+            return new List<BotCheckinScriptStep>();
 
         return raw
             .Replace("\r", "\n", StringComparison.Ordinal)
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(ParseStep)
+            .Where(x => !string.IsNullOrWhiteSpace(x.Value))
             .ToList();
+    }
+
+    public static BotCheckinScriptStep ParseStep(string line)
+    {
+        var value = (line ?? string.Empty).Trim();
+        if (value.StartsWith(ButtonStepPrefix, StringComparison.OrdinalIgnoreCase))
+            return new BotCheckinScriptStep(BotCheckinScriptStepKind.ClickButton, value[ButtonStepPrefix.Length..].Trim());
+
+        return new BotCheckinScriptStep(BotCheckinScriptStepKind.SendMessage, value);
+    }
+
+    public static string BuildScript(IEnumerable<BotCheckinScriptStep> steps)
+    {
+        return string.Join(Environment.NewLine, (steps ?? Array.Empty<BotCheckinScriptStep>()).Select(x => x.DisplayText));
+    }
+
+    private static string NormalizeScript(string? raw)
+    {
+        var steps = ParseSteps(raw);
+        return BuildScript(steps);
     }
 
     private static JsonSerializerOptions CreateJsonOptions()
@@ -161,6 +215,7 @@ public sealed class BotCheckinTaskConfig
         return new JsonSerializerOptions(JsonSerializerDefaults.Web)
         {
             WriteIndented = true,
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
             TypeInfoResolver = new DefaultJsonTypeInfoResolver()
         };
     }

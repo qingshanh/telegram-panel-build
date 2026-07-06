@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using TelegramPanel.Core.Models;
 using TelegramPanel.Core.Services;
 using TelegramPanel.Core.Services.Telegram;
 using TelegramPanel.Data.Entities;
@@ -27,7 +28,7 @@ public sealed class BotCheckinModuleTaskHandler : IModuleTaskHandler
         if (!string.IsNullOrWhiteSpace(validationError))
             throw new InvalidOperationException(validationError);
 
-        var messages = config.GetMessages();
+        var steps = config.GetSteps();
         var selectedAccountIds = config.SelectedAccountIds.ToHashSet();
         var selectedAccounts = (await accountManagement.GetActiveAccountsAsync())
             .Where(x => selectedAccountIds.Contains(x.Id))
@@ -37,19 +38,20 @@ public sealed class BotCheckinModuleTaskHandler : IModuleTaskHandler
         if (selectedAccounts.Count == 0)
             throw new InvalidOperationException("No runnable selected accounts were found.");
 
-        await presetStore.RememberCommandsAsync(messages, cancellationToken);
+        await presetStore.RememberCommandsAsync(config.GetMessages(), cancellationToken);
 
         var resolvedTargets = new Dictionary<int, AccountTelegramToolsService.ResolvedChatTarget>();
         var resolvedBotUsernames = new Dictionary<int, string>();
         var successfulAccountIds = new List<int>();
+        var conversationStates = new Dictionary<int, BotConversationState>();
         var completed = 0;
         var failed = 0;
         var runLog = new BotCheckinTaskRunLog
         {
             StartedAtUtc = DateTimeOffset.UtcNow,
             TotalAccounts = selectedAccounts.Count,
-            TotalMessages = messages.Count,
-            TotalOperations = selectedAccounts.Count * messages.Count,
+            TotalMessages = steps.Count,
+            TotalOperations = selectedAccounts.Count * steps.Count,
             Summary = "\u4EFB\u52A1\u5F00\u59CB\u6267\u884C\u3002"
         };
 
@@ -69,7 +71,7 @@ public sealed class BotCheckinModuleTaskHandler : IModuleTaskHandler
                 var account = selectedAccounts[accountIndex];
                 var accountHadSuccessfulSend = false;
 
-                for (var stepIndex = 0; stepIndex < messages.Count; stepIndex++)
+                for (var stepIndex = 0; stepIndex < steps.Count; stepIndex++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     if (!await host.IsStillRunningAsync(cancellationToken))
@@ -80,13 +82,14 @@ public sealed class BotCheckinModuleTaskHandler : IModuleTaskHandler
 
                     var stepResult = await ExecuteAccountMessageAsync(
                         account,
-                        messages[stepIndex],
+                        steps[stepIndex],
                         stepIndex,
                         config,
                         accountTelegramTools,
                         botCompat,
                         resolvedTargets,
                         resolvedBotUsernames,
+                        conversationStates,
                         cancellationToken);
 
                     runLog.Entries.Add(new BotCheckinTaskRunLogEntry
@@ -94,7 +97,7 @@ public sealed class BotCheckinModuleTaskHandler : IModuleTaskHandler
                         AccountId = account.Id,
                         AccountLabel = BuildAccountLabel(account),
                         StepNumber = stepIndex + 1,
-                        Message = messages[stepIndex],
+                        Message = steps[stepIndex].DisplayText,
                         SendSuccess = stepResult.SendSuccess,
                         ReplyCaptured = stepResult.ReplyCaptured,
                         ReplyMarkedAsRead = stepResult.MarkedAsRead,
@@ -177,13 +180,14 @@ public sealed class BotCheckinModuleTaskHandler : IModuleTaskHandler
 
     private static async Task<AccountMessageExecutionResult> ExecuteAccountMessageAsync(
         Account account,
-        string message,
+        BotCheckinScriptStep step,
         int stepIndex,
         BotCheckinTaskConfig config,
         AccountTelegramToolsService accountTelegramTools,
         BotCheckinTelegramCompatService botCompat,
         IDictionary<int, AccountTelegramToolsService.ResolvedChatTarget> resolvedTargets,
         IDictionary<int, string> resolvedBotUsernames,
+        IDictionary<int, BotConversationState> conversationStates,
         CancellationToken cancellationToken)
     {
         var result = new AccountMessageExecutionResult();
@@ -208,10 +212,58 @@ public sealed class BotCheckinModuleTaskHandler : IModuleTaskHandler
                 resolvedBotUsernames[account.Id] = resolve.BotUsername;
         }
 
-        var normalizedMessage = (message ?? string.Empty).Trim();
+        var stepValue = (step.Value ?? string.Empty).Trim();
+        if (step.Kind == BotCheckinScriptStepKind.ClickButton)
+        {
+            if (!conversationStates.TryGetValue(account.Id, out var state) || state.LastResponseMessageId <= 0 || state.LastButtons.Count == 0)
+            {
+                result.Error = "Previous reply context is missing, cannot click the scripted button.";
+                return result;
+            }
+
+            var matchedButton = FindScriptButton(state.LastButtons, stepValue);
+            if (matchedButton == null)
+            {
+                result.Error = $"No reply button matching '{stepValue}' was found.";
+                return result;
+            }
+
+            var click = await accountTelegramTools.ClickInlineButtonAsync(account.Id, target, state.LastResponseMessageId, matchedButton.CallbackData);
+            result.SendSuccess = click.Success;
+            if (!click.Success)
+            {
+                result.Error = click.Error ?? "Click reply button failed.";
+                return result;
+            }
+
+            var followUp = await botCompat.WaitForBotReplyAsync(
+                account.Id,
+                target,
+                state.LastResponseMessageId,
+                account.Username,
+                config.WaitTimeoutSeconds,
+                resolvedBotUsernames.TryGetValue(account.Id, out var clickedBotUsername) ? clickedBotUsername : null,
+                config.MarkRepliesAsRead,
+                cancellationToken);
+
+            if (!followUp.Success || followUp.Candidate == null)
+            {
+                result.Error = followUp.Error ?? "Bot reply was not captured after clicking the button.";
+                return result;
+            }
+
+            result.ReplyCaptured = true;
+            result.MarkedAsRead = followUp.MarkedAsRead;
+            result.ReplyPreview = !string.IsNullOrWhiteSpace(followUp.Candidate.Text)
+                ? followUp.Candidate.Text.Trim()
+                : (followUp.Candidate.ImageJpegBytes is { Length: > 0 } ? "[image]" : string.Empty);
+            conversationStates[account.Id] = new BotConversationState(followUp.Candidate.MessageId, followUp.Candidate.Buttons.ToList());
+            return result;
+        }
+
         if (stepIndex == 0
             && config.AutoStartBeforeFirstMessage
-            && !string.Equals(normalizedMessage, "/start", StringComparison.OrdinalIgnoreCase))
+            && !string.Equals(stepValue, "/start", StringComparison.OrdinalIgnoreCase))
         {
             if (!string.IsNullOrWhiteSpace(config.StartParameter))
             {
@@ -248,7 +300,7 @@ public sealed class BotCheckinModuleTaskHandler : IModuleTaskHandler
         var send = await accountTelegramTools.SendMessageToResolvedChatAsync(
             account.Id,
             target,
-            normalizedMessage,
+            stepValue,
             replyToMessageId: null,
             cancellationToken: cancellationToken);
 
@@ -280,7 +332,22 @@ public sealed class BotCheckinModuleTaskHandler : IModuleTaskHandler
         result.ReplyPreview = !string.IsNullOrWhiteSpace(wait.Candidate.Text)
             ? wait.Candidate.Text.Trim()
             : (wait.Candidate.ImageJpegBytes is { Length: > 0 } ? "[image]" : string.Empty);
+        conversationStates[account.Id] = new BotConversationState(wait.Candidate.MessageId, wait.Candidate.Buttons.ToList());
         return result;
+    }
+
+    private static TelegramInlineButtonOption? FindScriptButton(IReadOnlyCollection<TelegramInlineButtonOption> buttons, string buttonText)
+    {
+        var normalized = (buttonText ?? string.Empty).Trim();
+        if (normalized.Length == 0 || buttons.Count == 0)
+            return null;
+
+        var exact = buttons.FirstOrDefault(x => string.Equals((x.Text ?? string.Empty).Trim(), normalized, StringComparison.OrdinalIgnoreCase));
+        if (exact != null)
+            return exact;
+
+        var contains = buttons.Where(x => (x.Text ?? string.Empty).Contains(normalized, StringComparison.OrdinalIgnoreCase)).ToList();
+        return contains.Count == 1 ? contains[0] : null;
     }
 
     private static async Task<bool> DelayWithHostCheckAsync(
@@ -361,6 +428,8 @@ public sealed class BotCheckinModuleTaskHandler : IModuleTaskHandler
 
         return normalized[..Math.Max(0, maxLength - 3)] + "...";
     }
+
+    private sealed record BotConversationState(int LastResponseMessageId, List<TelegramInlineButtonOption> LastButtons);
 
     private sealed class AccountMessageExecutionResult
     {

@@ -312,6 +312,22 @@
                 @TextReset
             </MudButton>
         </MudStack>
+
+        @if (debugTimeline.Count > 0)
+        {
+            <MudPaper Class="pa-3 mt-3" Elevation="0" Outlined="true">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-2">
+                    <MudText Typo="Typo.subtitle1">@TextDebugTitle</MudText>
+                    <MudSpacer />
+                    <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" OnClick="ApplyDebugScriptAsync">@TextDebugApply</MudButton>
+                    <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Default" OnClick="ClearDebugTimelineAsync">@TextDebugClear</MudButton>
+                </MudStack>
+                @foreach (var item in debugTimeline.TakeLast(20))
+                {
+                    <MudText Typo="Typo.caption" Class="d-block mb-1">@item</MudText>
+                }
+            </MudPaper>
+        }
     </MudStack>
 </MudPaper>
 
@@ -357,7 +373,7 @@
         </MudStack>
 
         <MudText Typo="Typo.body2" Class="mb-3 mud-text-secondary">
-            @($"{TextCurrentScriptPrefix}{Shorten(workflowMessages.ElementAtOrDefault(Math.Max(currentStepIndex, 0)), 200)}")
+            @($"{TextCurrentScriptPrefix}{Shorten(workflowSteps.ElementAtOrDefault(Math.Max(currentStepIndex, 0))?.DisplayText, 200)}")
         </MudText>
 
         <MudTable Items="@currentStepResults"
@@ -503,7 +519,7 @@
     private const string TextRandomDelayMax = "\u968F\u673A\u5EF6\u8FDF\u6700\u5927\u503C\uFF08\u79D2\uFF09";
     private const string TextAutoContinue = "\u81EA\u52A8\u8FDE\u7EED\u6267\u884C\u5168\u90E8\u811A\u672C";
     private const string TextScriptLabel = "\u6D88\u606F\u811A\u672C\uFF08\u6BCF\u884C\u4E00\u6761\uFF09";
-    private const string TextScriptHelper = "\u4E0D\u4F1A\u518D\u56FA\u5B9A\u5185\u7F6E\u9ED8\u8BA4\u547D\u4EE4\u3002\u4E0B\u65B9\u4F1A\u663E\u793A\u4F60\u5386\u53F2\u4F7F\u7528\u8FC7\u7684\u547D\u4EE4\u5019\u9009\uFF0C\u70B9\u4E00\u4E0B\u5373\u53EF\u63D2\u5165\u3002";
+    private const string TextScriptHelper = "\u6BCF\u884C\u4E00\u4E2A\u52A8\u4F5C\u3002\u666E\u901A\u6587\u672C\u884C\u8868\u793A\u53D1\u6D88\u606F\uFF0C\u4EE5\u201C\u6309\u94AE:\u201D\u5F00\u5934\u7684\u884C\u8868\u793A\u70B9\u51FB\u4E0A\u4E00\u6B65\u56DE\u590D\u91CC\u7684\u6309\u94AE\u3002\u4E0B\u65B9\u4F1A\u663E\u793A\u4F60\u5386\u53F2\u4F7F\u7528\u8FC7\u7684\u547D\u4EE4\u5019\u9009\uFF0C\u70B9\u4E00\u4E0B\u5373\u53EF\u63D2\u5165\u3002";
     private const string TextHistoryCommands = "\u5386\u53F2\u547D\u4EE4\u5019\u9009\uFF1A";
     private const string TextAccountList = "\u8D26\u53F7\u5217\u8868";
     private const string TextSelectedCount = "\u5DF2\u9009 {0} / {1}";
@@ -569,6 +585,9 @@
     private const string TextReadDiagMessageIds = "\u6D88\u606FID";
     private const string TextReadDiagUnknown = "\u4ECD\u6709\u672A\u8BFB\uFF0C\u4F46\u6682\u672A\u5B9A\u4F4D\u5230\u5177\u4F53\u7C7B\u578B";
     private const string TextHistoryTitle = "\u6267\u884C\u5386\u53F2";
+    private const string TextDebugTitle = "\u8C03\u8BD5\u8BB0\u5F55";
+    private const string TextDebugApply = "\u56DE\u586B\u4E3A\u811A\u672C";
+    private const string TextDebugClear = "\u6E05\u7A7A\u8BB0\u5F55";
     private const string TextHistoryTime = "\u65F6\u95F4";
     private const string TextHistoryStep = "\u811A\u672C\u884C";
     private const string TextHistoryMessage = "\u6D88\u606F";
@@ -605,12 +624,14 @@
     private List<BotCommandHistoryItem> recentCommands = new();
     private readonly HashSet<int> selectedAccountIds = new();
     private readonly HashSet<int> rememberedBotAccountIds = new();
-    private readonly List<string> workflowMessages = new();
+    private readonly List<BotCheckinScriptStep> workflowSteps = new();
     private readonly List<AccountStepResult> currentStepResults = new();
     private readonly List<StepHistory> history = new();
     private readonly Dictionary<int, AccountTelegramToolsService.ResolvedChatTarget> resolvedTargets = new();
     private readonly Dictionary<int, string> resolvedBotUsernames = new();
     private readonly Dictionary<int, List<AccountStepResult>> stepResultBuffers = new();
+    private readonly List<string> debugTimeline = new();
+    private readonly List<BotCheckinScriptStep> debugScriptSteps = new();
     private readonly Dictionary<int, DateTimeOffset> stepExecutionTimes = new();
     private readonly List<int> currentRunAccountIds = new();
 
@@ -623,7 +644,7 @@
     private bool CanContinue => !running && workflowActive && !(currentRunConfig?.AutoContinueAllSteps ?? autoContinueAllSteps) && HasNextStep;
     private bool CanStop => running || workflowActive;
     private bool CanReset => !running && (workflowActive || currentStepIndex >= 0 || history.Count > 0 || currentRunConfig != null);
-    private bool HasNextStep => workflowActive && currentStepIndex >= 0 && currentStepIndex + 1 < workflowMessages.Count;
+    private bool HasNextStep => workflowActive && currentStepIndex >= 0 && currentStepIndex + 1 < workflowSteps.Count;
     private int CurrentViewStepNumber => Math.Max(currentStepIndex + 1, 1);
     private Severity StartHintSeverity => string.IsNullOrWhiteSpace(GetCurrentConfigValidationError()) ? Severity.Success : Severity.Warning;
     private string ExecutionModeDescription => autoContinueAllSteps
@@ -648,7 +669,7 @@
                 return error;
 
             var config = BuildCurrentConfig();
-            return $"{TextHintReadyPrefix}{config.SelectedAccountIds.Count} \u4E2A\u8D26\u53F7\uFF0C{config.GetMessages().Count} \u6761\u811A\u672C\u3002";
+            return $"{TextHintReadyPrefix}{config.SelectedAccountIds.Count} \u4E2A\u8D26\u53F7\uFF0C{config.GetSteps().Count} \u6761\u811A\u672C\u3002";
         }
     }
 
@@ -883,7 +904,7 @@
 
         PrepareNewWorkflow(config);
         currentStatusText = config.AutoContinueAllSteps
-            ? $"Ready to run continuously. Accounts: {currentRunAccountIds.Count}, messages: {workflowMessages.Count}."
+            ? $"Ready to run continuously. Accounts: {currentRunAccountIds.Count}, steps: {workflowSteps.Count}."
             : $"Ready to run step 1. Accounts: {currentRunAccountIds.Count}.";
 
         Snackbar.Add(
@@ -924,7 +945,7 @@
 
         workflowActive = false;
         currentStepIndex = -1;
-        workflowMessages.Clear();
+        workflowSteps.Clear();
         currentStepResults.Clear();
         history.Clear();
         resolvedTargets.Clear();
@@ -953,7 +974,7 @@
             return;
         }
 
-        var message = workflowMessages[stepIndex];
+        var step = workflowSteps[stepIndex];
         running = true;
         runCts = new CancellationTokenSource();
         var cancellationToken = runCts.Token;
@@ -970,7 +991,7 @@
                 currentStatusText = $"Processing account {index + 1}/{selectedAccounts.Count}: {BuildAccountLabel(account)}";
                 StateHasChanged();
 
-                var row = await ExecuteAccountStepAsync(account, message, stepIndex, currentRunConfig, cancellationToken);
+                var row = await ExecuteAccountStepAsync(account, step, stepIndex, currentRunConfig, cancellationToken);
                 AppendStepResult(stepIndex, row);
 
                 if (index < selectedAccounts.Count - 1)
@@ -992,7 +1013,7 @@
             }
 
             currentStepIndex = Math.Max(currentStepIndex, stepIndex);
-            if (stepIndex >= workflowMessages.Count - 1)
+            if (stepIndex >= workflowSteps.Count - 1)
             {
                 workflowActive = false;
                 if (unreadFinalizeFailures > 0)
@@ -1066,7 +1087,7 @@
         running = true;
         runCts = new CancellationTokenSource();
         var cancellationToken = runCts.Token;
-        currentStatusText = $"Running continuously. Accounts: {selectedAccounts.Count}, messages: {workflowMessages.Count}.";
+        currentStatusText = $"Running continuously. Accounts: {selectedAccounts.Count}, steps: {workflowSteps.Count}.";
         StateHasChanged();
 
         try
@@ -1076,13 +1097,13 @@
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var account = selectedAccounts[accountIndex];
-                for (var stepIndex = 0; stepIndex < workflowMessages.Count; stepIndex++)
+                for (var stepIndex = 0; stepIndex < workflowSteps.Count; stepIndex++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    currentStatusText = $"Account {accountIndex + 1}/{selectedAccounts.Count}, message {stepIndex + 1}/{workflowMessages.Count}: {BuildAccountLabel(account)}";
+                    currentStatusText = $"Account {accountIndex + 1}/{selectedAccounts.Count}, step {stepIndex + 1}/{workflowSteps.Count}: {BuildAccountLabel(account)}";
                     StateHasChanged();
 
-                    var row = await ExecuteAccountStepAsync(account, workflowMessages[stepIndex], stepIndex, currentRunConfig, cancellationToken);
+                    var row = await ExecuteAccountStepAsync(account, workflowSteps[stepIndex], stepIndex, currentRunConfig, cancellationToken);
                     AppendStepResult(stepIndex, row);
                 }
 
@@ -1110,7 +1131,7 @@
             }
 
             workflowActive = false;
-            currentStepIndex = workflowMessages.Count - 1;
+            currentStepIndex = workflowSteps.Count - 1;
             currentStatusText = "Continuous run completed.";
             Snackbar.Add("Continuous run completed.", Severity.Success);
         }
@@ -1143,7 +1164,7 @@
         }
     }
 
-    private async Task<AccountStepResult> ExecuteAccountStepAsync(Account account, string message, int stepIndex, BotCheckinTaskConfig config, CancellationToken cancellationToken)
+    private async Task<AccountStepResult> ExecuteAccountStepAsync(Account account, BotCheckinScriptStep step, int stepIndex, BotCheckinTaskConfig config, CancellationToken cancellationToken)
     {
         var row = new AccountStepResult { AccountId = account.Id, AccountLabel = BuildAccountLabel(account) };
 
@@ -1164,8 +1185,57 @@
                     resolvedBotUsernames[account.Id] = resolve.BotUsername;
             }
 
-            var normalizedMessage = (message ?? string.Empty).Trim();
-            if (stepIndex == 0 && config.AutoStartBeforeFirstMessage && !string.Equals(normalizedMessage, "/start", StringComparison.OrdinalIgnoreCase))
+            var stepValue = (step.Value ?? string.Empty).Trim();
+            if (step.Kind == BotCheckinScriptStepKind.ClickButton)
+            {
+                if (stepIndex <= 0)
+                {
+                    row.Error = "Button steps cannot be the first line of the script.";
+                    return row;
+                }
+
+                if (!TryGetPreviousStepResult(account.Id, stepIndex - 1, out var previousRow) || previousRow.ResponseMessageId <= 0)
+                {
+                    row.Error = $"The previous step for {row.AccountLabel} does not have a reply context to click.";
+                    return row;
+                }
+
+                if (!TryFindScriptButton(previousRow, stepValue, out var matchedButton))
+                {
+                    row.Error = $"No reply button matching '{stepValue}' was found for {row.AccountLabel}.";
+                    return row;
+                }
+
+                var click = await AccountTelegramTools.ClickInlineButtonAsync(account.Id, target, previousRow.ResponseMessageId, matchedButton.CallbackData);
+                row.SendSuccess = click.Success;
+                if (!click.Success)
+                {
+                    row.Error = click.Error ?? "Click reply button failed.";
+                    return row;
+                }
+
+                var followUp = await BotCompat.WaitForBotReplyAsync(
+                    account.Id,
+                    target,
+                    previousRow.ResponseMessageId,
+                    account.Username,
+                    config.WaitTimeoutSeconds,
+                    resolvedBotUsernames.TryGetValue(account.Id, out var clickedBotUsername) ? clickedBotUsername : null,
+                    config.MarkRepliesAsRead,
+                    cancellationToken);
+
+                if (!followUp.Success || followUp.Candidate == null)
+                {
+                    row.Error = followUp.Error ?? "No new reply was captured after clicking the button.";
+                    return row;
+                }
+
+                ApplyCandidateToResult(row, followUp.Candidate, followUp.MarkedAsRead);
+                RecordDebugReply(account, followUp.Candidate);
+                return row;
+            }
+
+            if (stepIndex == 0 && config.AutoStartBeforeFirstMessage && !string.Equals(stepValue, "/start", StringComparison.OrdinalIgnoreCase))
             {
                 if (!string.IsNullOrWhiteSpace(config.StartParameter))
                 {
@@ -1187,7 +1257,7 @@
                 }
             }
 
-            var send = await AccountTelegramTools.SendMessageToResolvedChatAsync(account.Id, target, normalizedMessage, replyToMessageId: null, cancellationToken: cancellationToken);
+            var send = await AccountTelegramTools.SendMessageToResolvedChatAsync(account.Id, target, stepValue, replyToMessageId: null, cancellationToken: cancellationToken);
             row.SendSuccess = send.Success;
             if (!send.Success || !send.MessageId.HasValue)
             {
@@ -1212,6 +1282,7 @@
             }
 
             ApplyCandidateToResult(row, wait.Candidate, wait.MarkedAsRead);
+            RecordDebugReply(account, wait.Candidate);
             return row;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -1224,6 +1295,46 @@
             row.Error = ex.Message;
             return row;
         }
+    }
+
+    private bool TryGetPreviousStepResult(int accountId, int stepIndex, out AccountStepResult row)
+    {
+        row = new AccountStepResult();
+        if (!stepResultBuffers.TryGetValue(stepIndex, out var buffer))
+            return false;
+
+        var existing = buffer.FirstOrDefault(x => x.AccountId == accountId);
+        if (existing == null)
+            return false;
+
+        row = existing;
+        return true;
+    }
+
+    private static bool TryFindScriptButton(AccountStepResult row, string buttonText, out TelegramInlineButtonOption matchedButton)
+    {
+        matchedButton = new TelegramInlineButtonOption(-1, string.Empty, Array.Empty<byte>());
+        var normalized = (buttonText ?? string.Empty).Trim();
+        if (normalized.Length == 0 || row.ResponseButtons.Count == 0)
+            return false;
+
+        var exactMatch = row.ResponseButtons.FirstOrDefault(x => string.Equals((x.Text ?? string.Empty).Trim(), normalized, StringComparison.OrdinalIgnoreCase));
+        if (exactMatch != null)
+        {
+            matchedButton = exactMatch;
+            return true;
+        }
+
+        var containsMatches = row.ResponseButtons
+            .Where(x => (x.Text ?? string.Empty).Contains(normalized, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (containsMatches.Count == 1)
+        {
+            matchedButton = containsMatches[0];
+            return true;
+        }
+
+        return false;
     }
 
     private async Task ClickResponseButtonAsync(int accountId, int buttonIndex)
@@ -1252,6 +1363,7 @@
 
         try
         {
+            var clickText = button.Text;
             var click = await AccountTelegramTools.ClickInlineButtonAsync(accountId, target, row.ResponseMessageId, button.CallbackData);
             if (!click.Success)
             {
@@ -1291,6 +1403,8 @@
             }
 
             ApplyCandidateToResult(row, followUp.Candidate, markedAsRead);
+            RecordManualDebugButton(account, clickText);
+            RecordDebugReply(account, followUp.Candidate);
             row.ReadStateSummary = readStateSummary;
             row.Error = null;
             UpdateBufferedRow(row);
@@ -1324,6 +1438,66 @@
         return Task.CompletedTask;
     }
 
+
+    private Task ClearDebugTimelineAsync()
+    {
+        debugTimeline.Clear();
+        debugScriptSteps.Clear();
+        Snackbar.Add("\u8C03\u8BD5\u8BB0\u5F55\u5DF2\u6E05\u7A7A\u3002", Severity.Info);
+        return Task.CompletedTask;
+    }
+
+    private Task ApplyDebugScriptAsync()
+    {
+        if (debugScriptSteps.Count == 0)
+        {
+            Snackbar.Add("\u5F53\u524D\u6CA1\u6709\u53EF\u56DE\u586B\u7684\u8C03\u8BD5\u52A8\u4F5C\u3002", Severity.Warning);
+            return Task.CompletedTask;
+        }
+
+        messageScript = BotCheckinTaskConfig.BuildScript(debugScriptSteps);
+        Snackbar.Add("\u5DF2\u5C06\u8C03\u8BD5\u52A8\u4F5C\u56DE\u586B\u5230\u811A\u672C\u8F93\u5165\u6846\u3002", Severity.Success);
+        return Task.CompletedTask;
+    }
+
+    private void RecordDebugAction(BotCheckinScriptStep step, Account account)
+    {
+        if (!ShouldRecordDebugTrace())
+            return;
+
+        debugScriptSteps.Add(step);
+        var actionText = step.Kind == BotCheckinScriptStepKind.ClickButton ? "\u70B9\u51FB\u6309\u94AE" : "\u53D1\u9001\u6D88\u606F";
+        debugTimeline.Add($"[{DateTime.Now:HH:mm:ss}] {BuildAccountLabel(account)} -> {actionText}: {step.Value}");
+    }
+
+    private void RecordManualDebugButton(Account account, string buttonText)
+    {
+        if (!ShouldRecordDebugTrace())
+            return;
+
+        var step = new BotCheckinScriptStep(BotCheckinScriptStepKind.ClickButton, (buttonText ?? string.Empty).Trim());
+        debugScriptSteps.Add(step);
+        debugTimeline.Add($"[{DateTime.Now:HH:mm:ss}] {BuildAccountLabel(account)} -> \u70B9\u51FB\u6309\u94AE: {step.Value}");
+    }
+
+    private void RecordDebugReply(Account account, TelegramVerificationMessageCandidate candidate)
+    {
+        if (!ShouldRecordDebugTrace())
+            return;
+
+        var replyText = NormalizeResponseText(candidate);
+        var buttonSummary = BuildButtonsSummary(candidate);
+        var line = $"[{DateTime.Now:HH:mm:ss}] {BuildAccountLabel(account)} <- \u6536\u5230\u56DE\u590D: {Shorten(replyText, 120)}";
+        if (!string.IsNullOrWhiteSpace(buttonSummary))
+            line += $" | \u6309\u94AE: {buttonSummary}";
+        debugTimeline.Add(line);
+    }
+
+    private bool ShouldRecordDebugTrace()
+    {
+        var selectedCount = currentRunAccountIds.Count > 0 ? currentRunAccountIds.Count : selectedAccountIds.Count;
+        return selectedCount == 1;
+    }
     private void ShowReplyPreview(AccountStepResult row)
     {
         previewRow = row.Clone();
@@ -1478,7 +1652,7 @@
             history.Add(new StepHistory
             {
                 StepNumber = stepIndex + 1,
-                Message = workflowMessages.ElementAtOrDefault(stepIndex) ?? string.Empty,
+                Message = workflowSteps.ElementAtOrDefault(stepIndex)?.DisplayText ?? string.Empty,
                 ExecutedAt = stepExecutionTimes.TryGetValue(stepIndex, out var executedAt) ? executedAt : DateTimeOffset.Now,
                 Results = stepResultBuffers[stepIndex].OrderBy(x => x.AccountId).Select(x => x.Clone()).ToList()
             });
@@ -1554,8 +1728,8 @@
     private void PrepareNewWorkflow(BotCheckinTaskConfig config)
     {
         currentRunConfig = config;
-        workflowMessages.Clear();
-        workflowMessages.AddRange(config.GetMessages());
+        workflowSteps.Clear();
+        workflowSteps.AddRange(config.GetSteps());
         currentRunAccountIds.Clear();
         currentRunAccountIds.AddRange(config.SelectedAccountIds);
         currentStepIndex = -1;

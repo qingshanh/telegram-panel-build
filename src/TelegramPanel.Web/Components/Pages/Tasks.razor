@@ -1,4 +1,4 @@
-﻿@page "/tasks"
+@page "/tasks"
 @inject BatchTaskManagementService TaskManagement
 @inject ScheduledTaskService ScheduledTaskManagement
 @inject ImageAssetStorageService AssetStorage
@@ -11,6 +11,7 @@
 @using TelegramPanel.Core.BatchTasks
 @using System.Text.Json
 @using System.Text.Json.Nodes
+@using System.Text.Encodings.Web
 @using TelegramPanel.Modules
 @using TelegramPanel.Web.Modules
 @using TelegramPanel.Web.Services
@@ -524,7 +525,7 @@
         else if (IsUserChatActiveTask(task.TaskType) && TryBuildUserChatActiveDetails(task, out var activeDetails))
             details += activeDetails;
         else if (!IsBotAdminTask(task.TaskType) && !string.IsNullOrEmpty(task.Config))
-            details += $"\n配置信息:\n{task.Config}";
+            details += $"\n配置信息:\n{PrettyPrintJsonIfPossible(task.Config)}";
 
         var html = System.Net.WebUtility.HtmlEncode(details)
             .Replace("\r\n", "\n", StringComparison.Ordinal)
@@ -566,7 +567,7 @@
             if (node is JsonObject obj)
             {
                 obj.Remove("recent_failures");
-                return obj.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+                return obj.ToJsonString(new JsonSerializerOptions { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
             }
         }
         catch
@@ -577,6 +578,32 @@
         return config;
     }
 
+
+    private static string PrettyPrintJsonIfPossible(string? json)
+    {
+        var text = (json ?? string.Empty).Trim();
+        if (text.Length == 0)
+            return string.Empty;
+
+        try
+        {
+            var node = JsonNode.Parse(text);
+            if (node != null)
+            {
+                return node.ToJsonString(new JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                });
+            }
+        }
+        catch
+        {
+            // keep raw text fallback
+        }
+
+        return text;
+    }
     private static bool HasStatus(BatchTask task, string status)
     {
         return string.Equals(GetDisplayStatus(task), status, StringComparison.OrdinalIgnoreCase);
@@ -1058,11 +1085,11 @@
                 if (!string.IsNullOrWhiteSpace(logText))
                     details += $"\n最近一次执行日志:\n{logText}\n";
                 else if (!string.IsNullOrWhiteSpace(lastBatchTask.Config))
-                    details += $"\n最近批次配置/结果:\n{lastBatchTask.Config}\n";
+                    details += $"\n最近批次配置/结果:\n{PrettyPrintJsonIfPossible(lastBatchTask.Config)}\n";
             }
         }
         if (!string.IsNullOrWhiteSpace(task.ConfigJson))
-            details += $"\n配置信息:\n{task.ConfigJson}";
+            details += $"\n配置信息:\n{PrettyPrintJsonIfPossible(task.ConfigJson)}";
 
         var html = System.Net.WebUtility.HtmlEncode(details)
             .Replace("\r\n", "\n", StringComparison.Ordinal)
