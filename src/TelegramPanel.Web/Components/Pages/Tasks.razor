@@ -1075,7 +1075,8 @@
             var lastBatchTask = await TaskManagement.GetTaskAsync(task.LastBatchTaskId.Value);
             if (lastBatchTask != null)
             {
-                details += $"最近批次状态: {GetTaskStatusName(lastBatchTask.Status)}\n";
+                var lastBatchDisplayStatus = GetDisplayStatus(lastBatchTask);
+                details += $"最近批次状态: {GetStatusName(lastBatchDisplayStatus)}\n";
                 if (lastBatchTask.StartedAt.HasValue)
                     details += $"最近批次开始: {TimeZone.Format(lastBatchTask.StartedAt.Value, "yyyy-MM-dd HH:mm:ss")}\n";
                 if (lastBatchTask.CompletedAt.HasValue)
