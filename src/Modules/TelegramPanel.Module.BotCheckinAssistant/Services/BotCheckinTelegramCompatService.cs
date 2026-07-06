@@ -1104,41 +1104,81 @@ public sealed class BotCheckinTelegramCompatService
 
     private async Task<Client> GetOrCreateConnectedClientAsync(int accountId, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        Exception? lastError = null;
 
-        var existing = _clientPool.GetClient(accountId);
-        if (existing?.User != null)
-            return existing;
+        for (var attempt = 1; attempt <= 2; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
 
-        var account = await _accountManagement.GetAccountAsync(accountId)
-            ?? throw new InvalidOperationException($"Account does not exist: {accountId}");
+            var existing = _clientPool.GetClient(accountId);
+            if (existing?.User != null)
+                return existing;
 
-        var apiId = ResolveApiId(account);
-        var apiHash = ResolveApiHash(account);
-        var sessionKey = !string.IsNullOrWhiteSpace(account.ApiHash) ? account.ApiHash.Trim() : apiHash.Trim();
+            var account = await _accountManagement.GetAccountAsync(accountId)
+                ?? throw new InvalidOperationException($"Account does not exist: {accountId}");
 
-        if (string.IsNullOrWhiteSpace(account.SessionPath))
-            throw new InvalidOperationException("The account is missing SessionPath and cannot connect to Telegram.");
+            var apiId = ResolveApiId(account);
+            var apiHash = ResolveApiHash(account);
+            var sessionKey = !string.IsNullOrWhiteSpace(account.ApiHash) ? account.ApiHash.Trim() : apiHash.Trim();
 
-        var client = await _clientPool.GetOrCreateClientAsync(
-            accountId: accountId,
-            apiId: apiId,
-            apiHash: apiHash,
-            sessionPath: account.SessionPath,
-            sessionKey: sessionKey,
-            phoneNumber: account.Phone,
-            userId: account.UserId > 0 ? account.UserId : null);
+            if (string.IsNullOrWhiteSpace(account.SessionPath))
+                throw new InvalidOperationException("The account is missing SessionPath and cannot connect to Telegram.");
 
-        await client.ConnectAsync();
-        cancellationToken.ThrowIfCancellationRequested();
+            await _clientPool.RemoveClientAsync(accountId);
+            cancellationToken.ThrowIfCancellationRequested();
 
-        if (client.User == null && (client.UserId != 0 || account.UserId != 0))
-            await client.LoginUserIfNeeded(reloginOnFailedResume: false);
+            var client = await _clientPool.GetOrCreateClientAsync(
+                accountId: accountId,
+                apiId: apiId,
+                apiHash: apiHash,
+                sessionPath: account.SessionPath,
+                sessionKey: sessionKey,
+                phoneNumber: account.Phone,
+                userId: account.UserId > 0 ? account.UserId : null);
 
-        if (client.User == null)
-            throw new InvalidOperationException("The account is not logged in or the session is invalid. Please log in again.");
+            try
+            {
+                await client.ConnectAsync();
+                cancellationToken.ThrowIfCancellationRequested();
 
-        return client;
+                if (client.User == null && (client.UserId != 0 || account.UserId != 0))
+                    await client.LoginUserIfNeeded(reloginOnFailedResume: false);
+
+                if (client.User == null)
+                    throw new InvalidOperationException("The account is not logged in or the session is invalid. Please log in again.");
+
+                return client;
+            }
+            catch (Exception ex) when (attempt < 2 && IsRetryableTelegramBootstrapException(ex, cancellationToken))
+            {
+                lastError = ex;
+                _logger.LogWarning(ex, "Bot compat Telegram bootstrap failed for account {AccountId} on attempt {Attempt}, retrying once", accountId, attempt);
+                await _clientPool.RemoveClientAsync(accountId);
+                await Task.Delay(TimeSpan.FromMilliseconds(1200), cancellationToken);
+            }
+        }
+
+        throw new InvalidOperationException($"Telegram client bootstrap failed: {lastError?.Message}", lastError);
+    }
+
+    private static bool IsRetryableTelegramBootstrapException(Exception ex, CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested)
+            return false;
+
+        if (ex is TimeoutException)
+            return true;
+
+        if (ex is ObjectDisposedException disposed && disposed.ObjectName?.Contains("SemaphoreSlim", StringComparison.OrdinalIgnoreCase) == true)
+            return true;
+
+        if (ex is OperationCanceledException)
+            return true;
+
+        var message = ex.ToString();
+        return message.Contains("A task was canceled", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("SemaphoreSlim", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("Cannot access a disposed object", StringComparison.OrdinalIgnoreCase);
     }
 
     private int ResolveApiId(Account account)

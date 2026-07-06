@@ -14,7 +14,7 @@ using WTelegram;
 namespace TelegramPanel.Core.Services.Telegram;
 
 /// <summary>
-/// 账号诊断 / 系统通知 / 在线设备管理
+/// 璐﹀彿璇婃柇 / 绯荤粺閫氱煡 / 鍦ㄧ嚎璁惧绠＄悊
 /// </summary>
 public class AccountTelegramToolsService
 {
@@ -41,7 +41,7 @@ public class AccountTelegramToolsService
     }
 
     /// <summary>
-    /// 刷新账号状态（可选深度探测：检测“创建频道接口是否被冻结”，会创建并删除一个测试频道）
+    /// 鍒锋柊璐﹀彿鐘舵€侊紙鍙€夋繁搴︽帰娴嬶細妫€娴嬧€滃垱寤洪閬撴帴鍙ｆ槸鍚﹁鍐荤粨鈥濓紝浼氬垱寤哄苟鍒犻櫎涓€涓祴璇曢閬擄級
     /// </summary>
     public async Task<TelegramAccountStatusResult> RefreshAccountStatusAsync(int accountId, bool probeCreateChannel = false, CancellationToken cancellationToken = default)
     {
@@ -55,7 +55,7 @@ public class AccountTelegramToolsService
 
             var users = await ExecuteTelegramRequestAsync(
                 accountId,
-                "拉取账号资料",
+                "鎷夊彇璐﹀彿璧勬枡",
                 () => client.Users_GetUsers(InputUser.Self),
                 cancellationToken,
                 resetClientOnTimeout: true);
@@ -66,8 +66,8 @@ public class AccountTelegramToolsService
             {
                 var missingProfile = new TelegramAccountStatusResult(
                     Ok: false,
-                    Summary: "无法获取账号资料",
-                    Details: "Users_GetUsers(Self) 未返回 User",
+                    Summary: "鏃犳硶鑾峰彇璐﹀彿璧勬枡",
+                    Details: "Users_GetUsers(Self) 鏈繑鍥?User",
                     CheckedAtUtc: checkedAt);
                 await TryPersistStatusAsync(accountId, missingProfile, cancellationToken: cancellationToken);
                 return missingProfile;
@@ -94,11 +94,11 @@ public class AccountTelegramToolsService
                 await TryPopulateEstimatedRegistrationAsync(account, client, accountId, cancellationToken);
             }
 
-            var summary = "正常";
+            var summary = "姝ｅ父";
             if (profile.IsDeleted)
-                summary = "账号已注销/被删除";
+                summary = "璐﹀彿宸叉敞閿€/琚垹闄?;
             else if (profile.IsRestricted)
-                summary = "账号受限（Restricted）";
+                summary = "璐﹀彿鍙楅檺锛圧estricted锛?;
 
             if (probeCreateChannel)
             {
@@ -107,8 +107,8 @@ public class AccountTelegramToolsService
                 {
                     var frozen = new TelegramAccountStatusResult(
                         Ok: false,
-                        Summary: "账号被冻结（创建频道接口受限）",
-                        Details: $"创建频道探测：{probe.Message}{Environment.NewLine}{BuildProfileDetails(profile)}",
+                        Summary: "璐﹀彿琚喕缁擄紙鍒涘缓棰戦亾鎺ュ彛鍙楅檺锛?,
+                        Details: $"鍒涘缓棰戦亾鎺㈡祴锛歿probe.Message}{Environment.NewLine}{BuildProfileDetails(profile)}",
                         CheckedAtUtc: checkedAt,
                         Profile: profile);
                     await TryPersistStatusAsync(accountId, frozen, account, persistProfile: true, cancellationToken: cancellationToken);
@@ -119,19 +119,18 @@ public class AccountTelegramToolsService
                 {
                     var failed = new TelegramAccountStatusResult(
                         Ok: false,
-                        Summary: "创建频道探测失败",
-                        Details: $"创建频道探测：{probe.Message}{Environment.NewLine}{BuildProfileDetails(profile)}",
+                        Summary: "鍒涘缓棰戦亾鎺㈡祴澶辫触",
+                        Details: $"鍒涘缓棰戦亾鎺㈡祴锛歿probe.Message}{Environment.NewLine}{BuildProfileDetails(profile)}",
                         CheckedAtUtc: checkedAt,
                         Profile: profile);
                     await TryPersistStatusAsync(accountId, failed, account, persistProfile: true, cancellationToken: cancellationToken);
                     return failed;
                 }
 
-                // 探测成功，不影响原状态，仅补充详情
-                var okWithProbe = new TelegramAccountStatusResult(
+                // 鎺㈡祴鎴愬姛锛屼笉褰卞搷鍘熺姸鎬侊紝浠呰ˉ鍏呰鎯?                var okWithProbe = new TelegramAccountStatusResult(
                     Ok: true,
                     Summary: summary,
-                    Details: $"创建频道探测：可用（已自动清理测试频道）{Environment.NewLine}{BuildProfileDetails(profile)}",
+                    Details: $"鍒涘缓棰戦亾鎺㈡祴锛氬彲鐢紙宸茶嚜鍔ㄦ竻鐞嗘祴璇曢閬擄級{Environment.NewLine}{BuildProfileDetails(profile)}",
                     CheckedAtUtc: checkedAt,
                     Profile: profile);
                 await TryPersistStatusAsync(accountId, okWithProbe, account, persistProfile: true, cancellationToken: cancellationToken);
@@ -151,17 +150,16 @@ public class AccountTelegramToolsService
         {
             return new TelegramAccountStatusResult(
                 Ok: false,
-                Summary: "已取消",
-                Details: "操作已取消（页面关闭/刷新导致取消）",
+                Summary: "宸插彇娑?,
+                Details: "鎿嶄綔宸插彇娑堬紙椤甸潰鍏抽棴/鍒锋柊瀵艰嚧鍙栨秷锛?,
                 CheckedAtUtc: checkedAt);
         }
         catch (ObjectDisposedException) when (cancellationToken.IsCancellationRequested)
         {
-            // Blazor 页面刷新/断连时，Scoped 的 DbContext 可能已被释放；把它视为取消而不是错误。
-            return new TelegramAccountStatusResult(
+            // Blazor 椤甸潰鍒锋柊/鏂繛鏃讹紝Scoped 鐨?DbContext 鍙兘宸茶閲婃斁锛涙妸瀹冭涓哄彇娑堣€屼笉鏄敊璇€?            return new TelegramAccountStatusResult(
                 Ok: false,
-                Summary: "已取消",
-                Details: "页面已关闭/刷新，操作被中断",
+                Summary: "宸插彇娑?,
+                Details: "椤甸潰宸插叧闂?鍒锋柊锛屾搷浣滆涓柇",
                 CheckedAtUtc: checkedAt);
         }
         catch (Exception ex)
@@ -206,12 +204,10 @@ public class AccountTelegramToolsService
         }
         catch (ObjectDisposedException) when (cancellationToken.IsCancellationRequested)
         {
-            // 页面/作用域已销毁导致的 DbContext 释放，忽略即可
-        }
+            // 椤甸潰/浣滅敤鍩熷凡閿€姣佸鑷寸殑 DbContext 閲婃斁锛屽拷鐣ュ嵆鍙?        }
         catch (Exception ex)
         {
-            // 取消场景不需要噪声日志
-            if (!cancellationToken.IsCancellationRequested)
+            // 鍙栨秷鍦烘櫙涓嶉渶瑕佸櫔澹版棩蹇?            if (!cancellationToken.IsCancellationRequested)
                 _logger.LogWarning(ex, "Failed to persist Telegram status cache for account {AccountId}", accountId);
         }
     }
@@ -318,7 +314,7 @@ public class AccountTelegramToolsService
 
                 var history = await ExecuteTelegramRequestAsync(
                     accountId,
-                    "读取 777000 系统通知历史",
+                    "璇诲彇 777000 绯荤粺閫氱煡鍘嗗彶",
                     () => client.Messages_GetHistory(peer, offset_id: offsetId, limit: pageSize),
                     cancellationToken,
                     resetClientOnTimeout: true);
@@ -403,8 +399,7 @@ public class AccountTelegramToolsService
     }
 
     /// <summary>
-    /// 修改 Telegram 两步验证（二级密码）。
-    /// </summary>
+    /// 淇敼 Telegram 涓ゆ楠岃瘉锛堜簩绾у瘑鐮侊級銆?    /// </summary>
     public async Task<(bool Success, string? Error)> ChangeTwoFactorPasswordAsync(
         int accountId,
         string? currentPassword,
@@ -415,7 +410,7 @@ public class AccountTelegramToolsService
         try
         {
             if (string.IsNullOrWhiteSpace(newPassword))
-                return (false, "新二级密码不能为空");
+                return (false, "鏂颁簩绾у瘑鐮佷笉鑳戒负绌?);
 
             currentPassword = (currentPassword ?? string.Empty).Trim();
             newPassword = newPassword.Trim();
@@ -424,22 +419,21 @@ public class AccountTelegramToolsService
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
 
-            // 参考 WTelegramClient 官方示例：Account_UpdatePasswordSettings 需要 SRP 校验值（旧密码）与新密码 settings
+            // 鍙傝€?WTelegramClient 瀹樻柟绀轰緥锛欰ccount_UpdatePasswordSettings 闇€瑕?SRP 鏍￠獙鍊硷紙鏃у瘑鐮侊級涓庢柊瀵嗙爜 settings
             var accountPwd = await client.Account_GetPassword();
             cancellationToken.ThrowIfCancellationRequested();
 
-            // 若账号已开启两步验证但未提供旧密码，则直接提示
+            // 鑻ヨ处鍙峰凡寮€鍚袱姝ラ獙璇佷絾鏈彁渚涙棫瀵嗙爜锛屽垯鐩存帴鎻愮ず
             TL.InputCheckPasswordSRP? oldCheck = null;
             if (accountPwd.current_algo != null)
             {
                 if (string.IsNullOrWhiteSpace(currentPassword))
-                    return (false, "该账号已开启两步验证，请填写原二级密码");
+                    return (false, "璇ヨ处鍙峰凡寮€鍚袱姝ラ獙璇侊紝璇峰～鍐欏師浜岀骇瀵嗙爜");
 
                 oldCheck = await WTelegram.Client.InputCheckPassword(accountPwd, currentPassword);
             }
 
-            // 让 InputCheckPassword 生成 new_password_hash（需要将 current_algo 置空）
-            accountPwd.current_algo = null;
+            // 璁?InputCheckPassword 鐢熸垚 new_password_hash锛堥渶瑕佸皢 current_algo 缃┖锛?            accountPwd.current_algo = null;
             var newPasswordHash = await WTelegram.Client.InputCheckPassword(accountPwd, newPassword);
 
             var settings = new TL.Account_PasswordInputSettings
@@ -456,14 +450,13 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
             return (false, msg);
         }
     }
 
     /// <summary>
-    /// 忘记二级密码：向 Telegram 发起“重置两步验证密码”申请（通常需要等待 7 天）。
-    /// </summary>
+    /// 蹇樿浜岀骇瀵嗙爜锛氬悜 Telegram 鍙戣捣鈥滈噸缃袱姝ラ獙璇佸瘑鐮佲€濈敵璇凤紙閫氬父闇€瑕佺瓑寰?7 澶╋級銆?    /// </summary>
     public async Task<(bool Success, string? Error, DateTimeOffset? WaitUntilUtc)> RequestTwoFactorPasswordResetAsync(
         int accountId,
         CancellationToken cancellationToken = default)
@@ -479,28 +472,28 @@ public class AccountTelegramToolsService
             switch (result)
             {
                 case TL.Account_ResetPasswordOk:
-                    return (true, "二级密码已重置成功（现在可以直接重新设置二级密码）", null);
+                    return (true, "浜岀骇瀵嗙爜宸查噸缃垚鍔燂紙鐜板湪鍙互鐩存帴閲嶆柊璁剧疆浜岀骇瀵嗙爜锛?, null);
 
                 case TL.Account_ResetPasswordRequestedWait wait:
                 {
                     var untilUtc = ToUtcDateTimeOffset(wait.until_date);
-                    return (true, $"已提交重置申请，请等待至 {untilUtc:yyyy-MM-dd HH:mm:ss} UTC 后再完成重置/重新设置二级密码", untilUtc);
+                    return (true, $"宸叉彁浜ら噸缃敵璇凤紝璇风瓑寰呰嚦 {untilUtc:yyyy-MM-dd HH:mm:ss} UTC 鍚庡啀瀹屾垚閲嶇疆/閲嶆柊璁剧疆浜岀骇瀵嗙爜", untilUtc);
                 }
 
                 case TL.Account_ResetPasswordFailedWait failed:
                 {
                     var retryUtc = ToUtcDateTimeOffset(failed.retry_date);
-                    return (false, $"近期有被取消的重置申请，需等待至 {retryUtc:yyyy-MM-dd HH:mm:ss} UTC 后才能再次申请", retryUtc);
+                    return (false, $"杩戞湡鏈夎鍙栨秷鐨勯噸缃敵璇凤紝闇€绛夊緟鑷?{retryUtc:yyyy-MM-dd HH:mm:ss} UTC 鍚庢墠鑳藉啀娆＄敵璇?, retryUtc);
                 }
 
                 default:
-                    return (false, $"未知返回类型：{result.GetType().Name}", null);
+                    return (false, $"鏈煡杩斿洖绫诲瀷锛歿result.GetType().Name}", null);
             }
         }
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
             return (false, msg, null);
         }
     }
@@ -516,8 +509,7 @@ public class AccountTelegramToolsService
     }
 
     /// <summary>
-    /// 获取两步验证找回邮箱状态（是否已绑定、是否存在待确认的邮箱）。
-    /// </summary>
+    /// 鑾峰彇涓ゆ楠岃瘉鎵惧洖閭鐘舵€侊紙鏄惁宸茬粦瀹氥€佹槸鍚﹀瓨鍦ㄥ緟纭鐨勯偖绠憋級銆?    /// </summary>
     public async Task<(bool Success, string? Error, bool HasTwoFactorPassword, bool HasRecoveryEmail, string? UnconfirmedEmailPattern)>
         GetTwoFactorRecoveryEmailStatusAsync(int accountId, CancellationToken cancellationToken = default)
     {
@@ -541,14 +533,13 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
             return (false, msg, false, false, null);
         }
     }
 
     /// <summary>
-    /// 绑定/换绑两步验证找回邮箱（会发送验证码到邮箱，需调用 ConfirmTwoFactorRecoveryEmailAsync 确认）。
-    /// </summary>
+    /// 缁戝畾/鎹㈢粦涓ゆ楠岃瘉鎵惧洖閭锛堜細鍙戦€侀獙璇佺爜鍒伴偖绠憋紝闇€璋冪敤 ConfirmTwoFactorRecoveryEmailAsync 纭锛夈€?    /// </summary>
     public async Task<(bool Success, string? Error, string? EmailPattern)> SetTwoFactorRecoveryEmailAsync(
         int accountId,
         string? currentPassword,
@@ -559,7 +550,7 @@ public class AccountTelegramToolsService
         {
             email = (email ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(email))
-                return (false, "邮箱不能为空", null);
+                return (false, "閭涓嶈兘涓虹┖", null);
 
             try
             {
@@ -567,7 +558,7 @@ public class AccountTelegramToolsService
             }
             catch
             {
-                return (false, "邮箱格式不正确", null);
+                return (false, "閭鏍煎紡涓嶆纭?, null);
             }
 
             currentPassword = (currentPassword ?? string.Empty).Trim();
@@ -579,10 +570,10 @@ public class AccountTelegramToolsService
             cancellationToken.ThrowIfCancellationRequested();
 
             if (pwd.current_algo == null)
-                return (false, "该账号未开启两步验证，无法绑定找回邮箱，请先设置二级密码", null);
+                return (false, "璇ヨ处鍙锋湭寮€鍚袱姝ラ獙璇侊紝鏃犳硶缁戝畾鎵惧洖閭锛岃鍏堣缃簩绾у瘑鐮?, null);
 
             if (string.IsNullOrWhiteSpace(currentPassword))
-                return (false, "请填写原二级密码", null);
+                return (false, "璇峰～鍐欏師浜岀骇瀵嗙爜", null);
 
             var oldCheck = await WTelegram.Client.InputCheckPassword(pwd, currentPassword);
 
@@ -594,8 +585,7 @@ public class AccountTelegramToolsService
 
             await client.Account_UpdatePasswordSettings(oldCheck, settings);
 
-            // 更新后可通过 getPassword 获取“待确认邮箱”掩码信息
-            var after = await client.Account_GetPassword();
+            // 鏇存柊鍚庡彲閫氳繃 getPassword 鑾峰彇鈥滃緟纭閭鈥濇帺鐮佷俊鎭?            var after = await client.Account_GetPassword();
             var pattern = after.flags.HasFlag(TL.Account_Password.Flags.has_email_unconfirmed_pattern)
                 ? (after.email_unconfirmed_pattern ?? "").Trim()
                 : null;
@@ -608,14 +598,13 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
             return (false, msg, null);
         }
     }
 
     /// <summary>
-    /// 确认两步验证找回邮箱验证码。
-    /// </summary>
+    /// 纭涓ゆ楠岃瘉鎵惧洖閭楠岃瘉鐮併€?    /// </summary>
     public async Task<(bool Success, string? Error)> ConfirmTwoFactorRecoveryEmailAsync(
         int accountId,
         string code,
@@ -625,7 +614,7 @@ public class AccountTelegramToolsService
         {
             code = (code ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(code))
-                return (false, "验证码不能为空");
+                return (false, "楠岃瘉鐮佷笉鑳戒负绌?);
 
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
@@ -636,14 +625,13 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
             return (false, msg);
         }
     }
 
     /// <summary>
-    /// 重发两步验证找回邮箱验证码（需要先设置邮箱）。
-    /// </summary>
+    /// 閲嶅彂涓ゆ楠岃瘉鎵惧洖閭楠岃瘉鐮侊紙闇€瑕佸厛璁剧疆閭锛夈€?    /// </summary>
     public async Task<(bool Success, string? Error, string? EmailPattern, int? CodeLength)> ResendTwoFactorRecoveryEmailAsync(
         int accountId,
         CancellationToken cancellationToken = default)
@@ -655,7 +643,7 @@ public class AccountTelegramToolsService
 
             var ok = await client.Account_ResendPasswordEmail();
             if (!ok)
-                return (false, "重发失败", null, null);
+                return (false, "閲嶅彂澶辫触", null, null);
 
             var pwd = await client.Account_GetPassword();
             var pattern = pwd.flags.HasFlag(TL.Account_Password.Flags.has_email_unconfirmed_pattern)
@@ -665,20 +653,19 @@ public class AccountTelegramToolsService
             if (string.IsNullOrWhiteSpace(pattern))
                 pattern = null;
 
-            // 该 API 不返回验证码长度，仅返回邮箱掩码信息
+            // 璇?API 涓嶈繑鍥為獙璇佺爜闀垮害锛屼粎杩斿洖閭鎺╃爜淇℃伅
             return (true, null, pattern, null);
         }
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
             return (false, msg, null, null);
         }
     }
 
     /// <summary>
-    /// 取消待确认的找回邮箱验证码。
-    /// </summary>
+    /// 鍙栨秷寰呯‘璁ょ殑鎵惧洖閭楠岃瘉鐮併€?    /// </summary>
     public async Task<(bool Success, string? Error)> CancelTwoFactorRecoveryEmailAsync(
         int accountId,
         CancellationToken cancellationToken = default)
@@ -694,14 +681,13 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
             return (false, msg);
         }
     }
 
     /// <summary>
-    /// 获取登录邮箱状态（仅返回掩码 Pattern，不返回真实邮箱）。
-    /// </summary>
+    /// 鑾峰彇鐧诲綍閭鐘舵€侊紙浠呰繑鍥炴帺鐮?Pattern锛屼笉杩斿洖鐪熷疄閭锛夈€?    /// </summary>
     public async Task<(bool Success, string? Error, bool HasLoginEmail, string? LoginEmailPattern)>
         GetLoginEmailStatusAsync(int accountId, CancellationToken cancellationToken = default)
     {
@@ -721,15 +707,13 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
             return (false, msg, false, null);
         }
     }
 
     /// <summary>
-    /// 发送登录邮箱验证码（用于“登录邮箱变更/设置”）。
-    /// 注意：部分账号可能无法在“已登录状态”下新增登录邮箱（需要登录流程触发的 setup）。
-    /// </summary>
+    /// 鍙戦€佺櫥褰曢偖绠遍獙璇佺爜锛堢敤浜庘€滅櫥褰曢偖绠卞彉鏇?璁剧疆鈥濓級銆?    /// 娉ㄦ剰锛氶儴鍒嗚处鍙峰彲鑳芥棤娉曞湪鈥滃凡鐧诲綍鐘舵€佲€濅笅鏂板鐧诲綍閭锛堥渶瑕佺櫥褰曟祦绋嬭Е鍙戠殑 setup锛夈€?    /// </summary>
     public async Task<(bool Success, string? Error, string? EmailPattern)> SetLoginEmailAsync(
         int accountId,
         string email,
@@ -739,7 +723,7 @@ public class AccountTelegramToolsService
         {
             email = (email ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(email))
-                return (false, "邮箱不能为空", null);
+                return (false, "閭涓嶈兘涓虹┖", null);
 
             try
             {
@@ -747,7 +731,7 @@ public class AccountTelegramToolsService
             }
             catch
             {
-                return (false, "邮箱格式不正确", null);
+                return (false, "閭鏍煎紡涓嶆纭?, null);
             }
 
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
@@ -763,14 +747,13 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
             return (false, msg, null);
         }
     }
 
     /// <summary>
-    /// 确认登录邮箱验证码。
-    /// </summary>
+    /// 纭鐧诲綍閭楠岃瘉鐮併€?    /// </summary>
     public async Task<(bool Success, string? Error)> ConfirmLoginEmailAsync(
         int accountId,
         string code,
@@ -780,7 +763,7 @@ public class AccountTelegramToolsService
         {
             code = (code ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(code))
-                return (false, "请填写邮箱验证码");
+                return (false, "璇峰～鍐欓偖绠遍獙璇佺爜");
 
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
@@ -791,15 +774,13 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
             return (false, msg);
         }
     }
 
     /// <summary>
-    /// 更新当前账号的昵称/简介（Bio）。
-    /// 注意：用户名与头像分开使用 UpdateUsernameAsync / UpdateProfilePhotoAsync。
-    /// </summary>
+    /// 鏇存柊褰撳墠璐﹀彿鐨勬樀绉?绠€浠嬶紙Bio锛夈€?    /// 娉ㄦ剰锛氱敤鎴峰悕涓庡ご鍍忓垎寮€浣跨敤 UpdateUsernameAsync / UpdateProfilePhotoAsync銆?    /// </summary>
     public async Task<(bool Success, string? Error)> UpdateUserProfileAsync(
         int accountId,
         string? nickname,
@@ -814,7 +795,7 @@ public class AccountTelegramToolsService
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
 
-            // account.updateProfile 的字段是可选的：传 null 表示不修改该字段
+            // account.updateProfile 鐨勫瓧娈垫槸鍙€夌殑锛氫紶 null 琛ㄧず涓嶄慨鏀硅瀛楁
             string? firstName = null;
             string? lastName = null;
             if (nickname != null)
@@ -829,14 +810,13 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
             return (false, msg);
         }
     }
 
     /// <summary>
-    /// 更新当前账号用户名（t.me/xxx）。传空字符串表示清空用户名。
-    /// </summary>
+    /// 鏇存柊褰撳墠璐﹀彿鐢ㄦ埛鍚嶏紙t.me/xxx锛夈€備紶绌哄瓧绗︿覆琛ㄧず娓呯┖鐢ㄦ埛鍚嶃€?    /// </summary>
     public async Task<(bool Success, string? Error, string? Username)> UpdateUsernameAsync(
         int accountId,
         string? username,
@@ -851,21 +831,19 @@ public class AccountTelegramToolsService
 
             var result = await client.Account_UpdateUsername(username);
 
-            // result 可能是 User 或 bool，统一从输入回填即可
-            var normalized = string.IsNullOrWhiteSpace(username) ? null : username;
+            // result 鍙兘鏄?User 鎴?bool锛岀粺涓€浠庤緭鍏ュ洖濉嵆鍙?            var normalized = string.IsNullOrWhiteSpace(username) ? null : username;
             return (true, null, normalized);
         }
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
             return (false, msg, null);
         }
     }
 
     /// <summary>
-    /// 通过链接/用户名加入群组或订阅频道（支持 https://t.me/xxx、t.me/+hash、@username、username、tg://join?invite=hash 等）。
-    /// </summary>
+    /// 閫氳繃閾炬帴/鐢ㄦ埛鍚嶅姞鍏ョ兢缁勬垨璁㈤槄棰戦亾锛堟敮鎸?https://t.me/xxx銆乼.me/+hash銆丂username銆乽sername銆乼g://join?invite=hash 绛夛級銆?    /// </summary>
     public async Task<(bool Success, string? Error, string? JoinedTitle)> JoinChatOrChannelAsync(
         int accountId,
         string linkOrUsername,
@@ -875,7 +853,7 @@ public class AccountTelegramToolsService
         {
             var raw = (linkOrUsername ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(raw))
-                return (false, "链接/用户名为空", null);
+                return (false, "閾炬帴/鐢ㄦ埛鍚嶄负绌?, null);
 
             var url = NormalizeTelegramJoinUrl(raw);
 
@@ -896,19 +874,18 @@ public class AccountTelegramToolsService
         }
         catch (RpcException ex) when (ex.Code == 400 && string.Equals(ex.Message, "USER_ALREADY_PARTICIPANT", StringComparison.OrdinalIgnoreCase))
         {
-            return (true, null, "已在群组/频道中");
+            return (true, null, "宸插湪缇ょ粍/棰戦亾涓?);
         }
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
             return (false, msg, null);
         }
     }
 
     /// <summary>
-    /// 通过链接/用户名退出群组或取消订阅频道（支持 https://t.me/xxx、t.me/+hash、@username、username、tg://join?invite=hash 等）。
-    /// </summary>
+    /// 閫氳繃閾炬帴/鐢ㄦ埛鍚嶉€€鍑虹兢缁勬垨鍙栨秷璁㈤槄棰戦亾锛堟敮鎸?https://t.me/xxx銆乼.me/+hash銆丂username銆乽sername銆乼g://join?invite=hash 绛夛級銆?    /// </summary>
     public async Task<(bool Success, string? Error, string? LeftTitle)> LeaveChatOrChannelAsync(
         int accountId,
         string linkOrUsername,
@@ -918,15 +895,14 @@ public class AccountTelegramToolsService
         {
             var raw = (linkOrUsername ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(raw))
-                return (false, "链接/用户名为空", null);
+                return (false, "閾炬帴/鐢ㄦ埛鍚嶄负绌?, null);
 
             var url = NormalizeTelegramJoinUrl(raw);
 
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
 
-            // 解析目标（不加入）
-            var chat = await client.AnalyzeInviteLink(url, join: false);
+            // 瑙ｆ瀽鐩爣锛堜笉鍔犲叆锛?            var chat = await client.AnalyzeInviteLink(url, join: false);
             cancellationToken.ThrowIfCancellationRequested();
 
             var title = chat switch
@@ -944,26 +920,25 @@ public class AccountTelegramToolsService
             };
 
             if (peer == null)
-                return (false, "无法解析目标群组/频道", null);
+                return (false, "鏃犳硶瑙ｆ瀽鐩爣缇ょ粍/棰戦亾", null);
 
             await client.LeaveChat(peer);
             return (true, null, title);
         }
         catch (RpcException ex) when (ex.Code == 400 && string.Equals(ex.Message, "USER_NOT_PARTICIPANT", StringComparison.OrdinalIgnoreCase))
         {
-            return (true, null, "未在群组/频道中");
+            return (true, null, "鏈湪缇ょ粍/棰戦亾涓?);
         }
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
             return (false, msg, null);
         }
     }
 
     /// <summary>
-    /// 启用外部 Bot（向 Bot 发送 /start，可带参数）。
-    /// 支持：@xxxbot、xxxbot、https://t.me/xxxbot、tg://resolve?domain=xxxbot&start=abc
+    /// 鍚敤澶栭儴 Bot锛堝悜 Bot 鍙戦€?/start锛屽彲甯﹀弬鏁帮級銆?    /// 鏀寔锛欯xxxbot銆亁xxbot銆乭ttps://t.me/xxxbot銆乼g://resolve?domain=xxxbot&start=abc
     /// </summary>
     public async Task<(bool Success, string? Error, string? BotUsername)> StartExternalBotAsync(
         int accountId,
@@ -979,7 +954,7 @@ public class AccountTelegramToolsService
             var finalStart = string.IsNullOrWhiteSpace(normalizedManualStart) ? startFromLink : normalizedManualStart;
 
             if (finalStart.Length > 64)
-                return (false, "启动参数过长（最多 64 字符）", null);
+                return (false, "鍚姩鍙傛暟杩囬暱锛堟渶澶?64 瀛楃锛?, null);
 
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
@@ -987,7 +962,7 @@ public class AccountTelegramToolsService
             var resolved = await client.Contacts_ResolveUsername(username);
             var user = resolved.User;
             if (user.access_hash == 0)
-                return (false, "无法获取 Bot access_hash", null);
+                return (false, "鏃犳硶鑾峰彇 Bot access_hash", null);
 
             var inputUser = new InputUser(user.id, user.access_hash);
             var randomId = Random.Shared.NextInt64();
@@ -1001,23 +976,22 @@ public class AccountTelegramToolsService
         }
         catch (RpcException ex) when (ex.Code == 400 && string.Equals(ex.Message, "BOT_APP_INVALID", StringComparison.OrdinalIgnoreCase))
         {
-            return (false, "目标不是可启动的 Bot（BOT_APP_INVALID）", null);
+            return (false, "鐩爣涓嶆槸鍙惎鍔ㄧ殑 Bot锛圔OT_APP_INVALID锛?, null);
         }
         catch (RpcException ex) when (ex.Code == 400 && string.Equals(ex.Message, "PEER_FLOOD", StringComparison.OrdinalIgnoreCase))
         {
-            return (false, "触发风控（PEER_FLOOD），请降低频率后重试", null);
+            return (false, "瑙﹀彂椋庢帶锛圥EER_FLOOD锛夛紝璇烽檷浣庨鐜囧悗閲嶈瘯", null);
         }
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
             return (false, msg, null);
         }
     }
 
     /// <summary>
-    /// 停用外部 Bot（通过拉黑 Bot 实现）。
-    /// 支持：@xxxbot、xxxbot、https://t.me/xxxbot、tg://resolve?domain=xxxbot
+    /// 鍋滅敤澶栭儴 Bot锛堥€氳繃鎷夐粦 Bot 瀹炵幇锛夈€?    /// 鏀寔锛欯xxxbot銆亁xxbot銆乭ttps://t.me/xxxbot銆乼g://resolve?domain=xxxbot
     /// </summary>
     public async Task<(bool Success, string? Error, string? BotUsername)> StopExternalBotAsync(
         int accountId,
@@ -1035,27 +1009,25 @@ public class AccountTelegramToolsService
             var resolved = await client.Contacts_ResolveUsername(username);
             var user = resolved.User;
             if (user.access_hash == 0)
-                return (false, "无法获取 Bot access_hash", null);
+                return (false, "鏃犳硶鑾峰彇 Bot access_hash", null);
 
             await client.Contacts_Block(new InputPeerUser(user.id, user.access_hash));
             return (true, null, "@" + username);
         }
         catch (RpcException ex) when (ex.Code == 400 && string.Equals(ex.Message, "USER_NOT_MUTUAL_CONTACT", StringComparison.OrdinalIgnoreCase))
         {
-            // 某些账号状态下会返回该错误，按“已停用”处理可避免批量任务中断。
-            return (true, null, null);
+            // 鏌愪簺璐﹀彿鐘舵€佷笅浼氳繑鍥炶閿欒锛屾寜鈥滃凡鍋滅敤鈥濆鐞嗗彲閬垮厤鎵归噺浠诲姟涓柇銆?            return (true, null, null);
         }
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
             return (false, msg, null);
         }
     }
 
     /// <summary>
-    /// 解析外部 Bot 会话目标（用于后续发送消息/等待回复）。
-    /// 支持：@xxxbot、xxxbot、https://t.me/xxxbot、tg://resolve?domain=xxxbot&start=abc
+    /// 瑙ｆ瀽澶栭儴 Bot 浼氳瘽鐩爣锛堢敤浜庡悗缁彂閫佹秷鎭?绛夊緟鍥炲锛夈€?    /// 鏀寔锛欯xxxbot銆亁xxbot銆乭ttps://t.me/xxxbot銆乼g://resolve?domain=xxxbot&start=abc
     /// </summary>
     public async Task<(bool Success, string? Error, ResolvedChatTarget? Target, string? BotUsername)> ResolveExternalBotTargetAsync(
         int accountId,
@@ -1072,7 +1044,7 @@ public class AccountTelegramToolsService
             var resolved = await client.Contacts_ResolveUsername(username);
             var user = resolved.User;
             if (user.access_hash == 0)
-                return (false, "无法获取 Bot access_hash", null, null);
+                return (false, "鏃犳硶鑾峰彇 Bot access_hash", null, null);
 
             var target = new ResolvedChatTarget(
                 new InputPeerUser(user.id, user.access_hash),
@@ -1083,7 +1055,7 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}，{details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛寋details}";
             return (false, msg, null, null);
         }
     }
@@ -1091,9 +1063,9 @@ public class AccountTelegramToolsService
     public sealed record ResolvedChatTarget(InputPeer Peer, string Title, string CanonicalId);
 
     /// <summary>
-    /// 解析群组/频道目标，支持：
-    /// - 用户名/链接：@username、username、https://t.me/xxx、t.me/xxx、tg://join?invite=hash
-    /// - 频道/群组 ID：123456、-123456、-1001234567890
+    /// 瑙ｆ瀽缇ょ粍/棰戦亾鐩爣锛屾敮鎸侊細
+    /// - 鐢ㄦ埛鍚?閾炬帴锛欯username銆乽sername銆乭ttps://t.me/xxx銆乼.me/xxx銆乼g://join?invite=hash
+    /// - 棰戦亾/缇ょ粍 ID锛?23456銆?123456銆?1001234567890
     /// </summary>
     public async Task<(bool Success, string? Error, ResolvedChatTarget? Target)> ResolveChatTargetAsync(
         int accountId,
@@ -1104,7 +1076,7 @@ public class AccountTelegramToolsService
         {
             var raw = (target ?? string.Empty).Trim();
             if (raw.Length == 0)
-                return (false, "目标为空", null);
+                return (false, "鐩爣涓虹┖", null);
 
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
@@ -1115,7 +1087,7 @@ public class AccountTelegramToolsService
                 if (resolvedById != null)
                     return (true, null, resolvedById);
 
-                return (false, $"未找到 chatId={raw} 对应的群组/频道（请确认该账号已加入目标）", null);
+                return (false, $"鏈壘鍒?chatId={raw} 瀵瑰簲鐨勭兢缁?棰戦亾锛堣纭璇ヨ处鍙峰凡鍔犲叆鐩爣锛?, null);
             }
 
             var url = NormalizeTelegramJoinUrl(raw);
@@ -1130,7 +1102,7 @@ public class AccountTelegramToolsService
             };
 
             if (peer == null)
-                return (false, "无法解析目标群组/频道", null);
+                return (false, "鏃犳硶瑙ｆ瀽鐩爣缇ょ粍/棰戦亾", null);
 
             return chat switch
             {
@@ -1142,14 +1114,13 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
             return (false, msg, null);
         }
     }
 
     /// <summary>
-    /// 向已解析的群组/频道目标发送文本消息。
-    /// </summary>
+    /// 鍚戝凡瑙ｆ瀽鐨勭兢缁?棰戦亾鐩爣鍙戦€佹枃鏈秷鎭€?    /// </summary>
     public async Task<(bool Success, string? Error, int? MessageId)> SendMessageToResolvedChatAsync(
         int accountId,
         ResolvedChatTarget target,
@@ -1161,7 +1132,7 @@ public class AccountTelegramToolsService
         {
             var text = (message ?? string.Empty).Trim();
             if (text.Length == 0)
-                return (false, "消息内容为空", null);
+                return (false, "娑堟伅鍐呭涓虹┖", null);
 
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
@@ -1172,7 +1143,7 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
             return (false, msg, null);
         }
     }
@@ -1214,14 +1185,14 @@ public class AccountTelegramToolsService
                 cancellationToken);
 
             if (update == null)
-                return (false, $"等待验证消息超时（{timeoutSeconds} 秒）", null);
+                return (false, $"绛夊緟楠岃瘉娑堟伅瓒呮椂锛坽timeoutSeconds} 绉掞級", null);
 
             if (messageFilter != null
                 && stopOnUnmatchedMention
                 && !messageFilter(update)
                 && IsMentionOrReply(update, currentUsername, sentMessageId))
             {
-                return (false, "验证消息未命中关键词/正则，已跳过", null);
+                return (false, "楠岃瘉娑堟伅鏈懡涓叧閿瘝/姝ｅ垯锛屽凡璺宠繃", null);
             }
 
             var candidate = await BuildVerificationCandidateAsync(
@@ -1232,7 +1203,7 @@ public class AccountTelegramToolsService
                 cancellationToken);
 
             return candidate == null
-                ? (false, "匹配到的验证消息为空，无法执行 AI 识别", null)
+                ? (false, "鍖归厤鍒扮殑楠岃瘉娑堟伅涓虹┖锛屾棤娉曟墽琛?AI 璇嗗埆", null)
                 : (true, null, candidate);
         }
         catch (OperationCanceledException)
@@ -1242,7 +1213,7 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
             return (false, msg, null);
         }
     }
@@ -1257,7 +1228,7 @@ public class AccountTelegramToolsService
         try
         {
             if (callbackData == null || callbackData.Length == 0)
-                return (false, "按钮缺少 callback_data");
+                return (false, "鎸夐挳缂哄皯 callback_data");
 
             var client = await GetOrCreateConnectedClientAsync(accountId, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
@@ -1278,7 +1249,7 @@ public class AccountTelegramToolsService
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
             return (false, msg);
         }
     }
@@ -1553,24 +1524,24 @@ public class AccountTelegramToolsService
         if (text.Length == 0)
             return false;
 
-        if (ContainsAny(text, "垃圾广告", "广告", "不予处理", "已删除", "违规", "封禁")
-            && !ContainsAny(text, "验证", "验证码", "校验", "captcha"))
+        if (ContainsAny(text, "鍨冨溇骞垮憡", "骞垮憡", "涓嶄簣澶勭悊", "宸插垹闄?, "杩濊", "灏佺")
+            && !ContainsAny(text, "楠岃瘉", "楠岃瘉鐮?, "鏍￠獙", "captcha"))
         {
             return false;
         }
 
         if (ContainsAny(text,
-                "验证",
-                "验证码",
-                "校验",
-                "请选择",
-                "点击",
-                "按钮",
-                "完成验证",
-                "请回复",
-                "答案",
-                "算式",
-                "等于多少",
+                "楠岃瘉",
+                "楠岃瘉鐮?,
+                "鏍￠獙",
+                "璇烽€夋嫨",
+                "鐐瑰嚮",
+                "鎸夐挳",
+                "瀹屾垚楠岃瘉",
+                "璇峰洖澶?,
+                "绛旀",
+                "绠楀紡",
+                "绛変簬澶氬皯",
                 "reply",
                 "captcha"))
         {
@@ -1596,9 +1567,9 @@ public class AccountTelegramToolsService
                || text.IndexOf('-') >= 0
                || text.IndexOf('*') >= 0
                || text.IndexOf('/') >= 0
-               || text.Contains("×", StringComparison.Ordinal)
-               || text.Contains("÷", StringComparison.Ordinal)
-               || text.Contains("＝", StringComparison.Ordinal)
+               || text.Contains("脳", StringComparison.Ordinal)
+               || text.Contains("梅", StringComparison.Ordinal)
+               || text.Contains("锛?, StringComparison.Ordinal)
                || text.IndexOf('=') >= 0;
     }
 
@@ -1738,7 +1709,7 @@ public class AccountTelegramToolsService
     {
         var s = (input ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(s))
-            throw new ArgumentException("链接/用户名为空", nameof(input));
+            throw new ArgumentException("閾炬帴/鐢ㄦ埛鍚嶄负绌?, nameof(input));
 
         // tg://join?invite=xxxx
         if (s.StartsWith("tg://", StringComparison.OrdinalIgnoreCase))
@@ -1757,7 +1728,7 @@ public class AccountTelegramToolsService
             }
         }
 
-        // 直接是 t.me/xxx
+        // 鐩存帴鏄?t.me/xxx
         if (s.StartsWith("t.me/", StringComparison.OrdinalIgnoreCase) || s.StartsWith("telegram.me/", StringComparison.OrdinalIgnoreCase))
             return "https://" + s;
 
@@ -1775,7 +1746,7 @@ public class AccountTelegramToolsService
     {
         var s = (input ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(s))
-            throw new ArgumentException("Bot 用户名为空", nameof(input));
+            throw new ArgumentException("Bot 鐢ㄦ埛鍚嶄负绌?, nameof(input));
 
         string startFromLink = string.Empty;
 
@@ -1790,7 +1761,7 @@ public class AccountTelegramToolsService
                 startFromLink = NormalizeBotStartParameter(start);
         }
 
-        // https://t.me/xxxbot?start=abc 或 t.me/xxxbot?start=abc
+        // https://t.me/xxxbot?start=abc 鎴?t.me/xxxbot?start=abc
         if (s.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
             || s.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
             || s.StartsWith("t.me/", StringComparison.OrdinalIgnoreCase)
@@ -1798,12 +1769,12 @@ public class AccountTelegramToolsService
         {
             var url = s.Contains("://", StringComparison.Ordinal) ? s : "https://" + s;
             if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
-                throw new ArgumentException("Bot 链接格式无效", nameof(input));
+                throw new ArgumentException("Bot 閾炬帴鏍煎紡鏃犳晥", nameof(input));
 
             var path = (uri.AbsolutePath ?? string.Empty).Trim('/');
             var firstSeg = path.Split('/', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? string.Empty;
             if (string.IsNullOrWhiteSpace(firstSeg))
-                throw new ArgumentException("Bot 链接中缺少用户名", nameof(input));
+                throw new ArgumentException("Bot 閾炬帴涓己灏戠敤鎴峰悕", nameof(input));
 
             s = firstSeg;
 
@@ -1814,8 +1785,7 @@ public class AccountTelegramToolsService
 
         s = s.Trim().TrimStart('@');
 
-        // 支持：@username?start=abc（无 http/tg 协议）
-        var question = s.IndexOf('?');
+        // 鏀寔锛欯username?start=abc锛堟棤 http/tg 鍗忚锛?        var question = s.IndexOf('?');
         if (question >= 0)
         {
             var query = ParseQueryString(s[(question + 1)..]);
@@ -1830,22 +1800,19 @@ public class AccountTelegramToolsService
             s = s[..slash];
 
         if (string.IsNullOrWhiteSpace(s))
-            throw new ArgumentException("Bot 用户名为空", nameof(input));
+            throw new ArgumentException("Bot 鐢ㄦ埛鍚嶄负绌?, nameof(input));
 
         if (s.StartsWith("+", StringComparison.Ordinal))
-            throw new ArgumentException("邀请链接不是 Bot 用户名，请输入 @xxxbot 或 t.me/xxxbot", nameof(input));
+            throw new ArgumentException("閭€璇烽摼鎺ヤ笉鏄?Bot 鐢ㄦ埛鍚嶏紝璇疯緭鍏?@xxxbot 鎴?t.me/xxxbot", nameof(input));
 
         if (!System.Text.RegularExpressions.Regex.IsMatch(s, "^[A-Za-z0-9_]{5,64}$"))
-            throw new ArgumentException("Bot 用户名格式无效", nameof(input));
+            throw new ArgumentException("Bot 鐢ㄦ埛鍚嶆牸寮忔棤鏁?, nameof(input));
 
-        // 常规情况：要求以 bot 结尾
-        // 例外：
-        // 1) 显式给了 start 参数（常见于 t.me/xxx?start=abc 或 @xxx?start=abc）
-        // 2) 调用方明确“按 Bot 处理”
-        if (!s.EndsWith("bot", StringComparison.OrdinalIgnoreCase)
+        // 甯歌鎯呭喌锛氳姹備互 bot 缁撳熬
+        // 渚嬪锛?        // 1) 鏄惧紡缁欎簡 start 鍙傛暟锛堝父瑙佷簬 t.me/xxx?start=abc 鎴?@xxx?start=abc锛?        // 2) 璋冪敤鏂规槑纭€滄寜 Bot 澶勭悊鈥?        if (!s.EndsWith("bot", StringComparison.OrdinalIgnoreCase)
             && string.IsNullOrWhiteSpace(startFromLink)
             && !assumeBotUsername)
-            throw new ArgumentException("目标看起来不是 Bot 用户名（需以 bot 结尾）", nameof(input));
+            throw new ArgumentException("鐩爣鐪嬭捣鏉ヤ笉鏄?Bot 鐢ㄦ埛鍚嶏紙闇€浠?bot 缁撳熬锛?, nameof(input));
 
         return (s, startFromLink);
     }
@@ -1896,8 +1863,7 @@ public class AccountTelegramToolsService
     }
 
     /// <summary>
-    /// 更新当前账号头像（静态图片）。
-    /// </summary>
+    /// 鏇存柊褰撳墠璐﹀彿澶村儚锛堥潤鎬佸浘鐗囷級銆?    /// </summary>
     public async Task<(bool Success, string? Error)> UpdateProfilePhotoAsync(
         int accountId,
         Stream fileStream,
@@ -1907,7 +1873,7 @@ public class AccountTelegramToolsService
         try
         {
             if (fileStream == null)
-                return (false, "头像文件为空");
+                return (false, "澶村儚鏂囦欢涓虹┖");
 
             fileName = (fileName ?? "avatar.jpg").Trim();
             if (string.IsNullOrWhiteSpace(fileName))
@@ -1921,19 +1887,19 @@ public class AccountTelegramToolsService
             cancellationToken.ThrowIfCancellationRequested();
 
             if (inputFile == null)
-                return (false, "头像上传失败：上传结果为空");
+                return (false, "澶村儚涓婁紶澶辫触锛氫笂浼犵粨鏋滀负绌?);
 
             await client.Photos_UploadProfilePhoto(inputFile, video: null, video_start_ts: null, video_emoji_markup: null, bot: null, fallback: false);
             return (true, null);
         }
         catch (UnknownImageFormatException)
         {
-            return (false, "头像上传失败：不支持的图片格式（建议使用 JPG/PNG）");
+            return (false, "澶村儚涓婁紶澶辫触锛氫笉鏀寔鐨勫浘鐗囨牸寮忥紙寤鸿浣跨敤 JPG/PNG锛?);
         }
         catch (Exception ex)
         {
             var (summary, details) = MapTelegramException(ex);
-            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}：{details}";
+            var msg = string.IsNullOrWhiteSpace(details) ? summary : $"{summary}锛歿details}";
             return (false, msg);
         }
     }
@@ -1974,93 +1940,127 @@ public class AccountTelegramToolsService
 
     private async Task<Client> GetOrCreateConnectedClientAsync(int accountId, CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        Exception? lastError = null;
 
-        var existing = _clientPool.GetClient(accountId);
-        if (existing?.User != null)
-            return existing;
-
-        var account = await _accountManagement.GetAccountAsync(accountId)
-            ?? throw new InvalidOperationException($"账号不存在：{accountId}");
-
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var apiId = ResolveApiId(account);
-        var apiHash = ResolveApiHash(account);
-        var sessionKey = ResolveSessionKey(account, apiHash);
-
-        if (string.IsNullOrWhiteSpace(account.SessionPath))
-            throw new InvalidOperationException("账号缺少 SessionPath，无法创建 Telegram 客户端");
-
-        var absoluteSessionPath = Path.GetFullPath(account.SessionPath);
-        if (File.Exists(absoluteSessionPath) && SessionDataConverter.LooksLikeSqliteSession(absoluteSessionPath))
+        for (var attempt = 1; attempt <= 2; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var converted = await SessionDataConverter.TryConvertSqliteSessionFromJsonAsync(
-                phone: account.Phone,
-                apiId: account.ApiId,
-                apiHash: account.ApiHash,
-                sqliteSessionPath: absoluteSessionPath,
-                logger: _logger
-            );
+            var existing = _clientPool.GetClient(accountId);
+            if (existing?.User != null)
+                return existing;
 
-            if (!converted.Ok)
+            var account = await _accountManagement.GetAccountAsync(accountId)
+                ?? throw new InvalidOperationException($"璐﹀彿涓嶅瓨鍦細{accountId}");
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var apiId = ResolveApiId(account);
+            var apiHash = ResolveApiHash(account);
+            var sessionKey = ResolveSessionKey(account, apiHash);
+
+            if (string.IsNullOrWhiteSpace(account.SessionPath))
+                throw new InvalidOperationException("璐﹀彿缂哄皯 SessionPath锛屾棤娉曞垱寤?Telegram 瀹㈡埛绔?");
+
+            var absoluteSessionPath = Path.GetFullPath(account.SessionPath);
+            if (File.Exists(absoluteSessionPath) && SessionDataConverter.LooksLikeSqliteSession(absoluteSessionPath))
             {
-                throw new InvalidOperationException(
-                    $"该账号的 Session 文件为 SQLite 格式：{account.SessionPath}，无法自动转换为可用 session。" +
-                    $"原因：{converted.Reason}。建议：重新导入包含 session_string 的 json，或到【账号-手机号登录】重新登录生成新的 sessions/*.session。");
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var converted = await SessionDataConverter.TryConvertSqliteSessionFromJsonAsync(
+                    phone: account.Phone,
+                    apiId: account.ApiId,
+                    apiHash: account.ApiHash,
+                    sqliteSessionPath: absoluteSessionPath,
+                    logger: _logger
+                );
+
+                if (!converted.Ok)
+                {
+                    throw new InvalidOperationException(
+                        $"璇ヨ处鍙风殑 Session 鏂囦欢涓?SQLite 鏍煎紡锛歿account.SessionPath}锛屾棤娉曡嚜鍔ㄨ浆鎹负鍙敤 session銆? +
+                        $"鍘熷洜锛歿converted.Reason}銆傚缓璁細閲嶆柊瀵煎叆鍖呭惈 session_string 鐨?json锛屾垨鍒般€愯处鍙?鎵嬫満鍙风櫥褰曘€戦噸鏂扮櫥褰曠敓鎴愭柊鐨?sessions/*.session銆?");
+                }
             }
-        }
 
-        await _clientPool.RemoveClientAsync(accountId);
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var client = await _clientPool.GetOrCreateClientAsync(
-            accountId: accountId,
-            apiId: apiId,
-            apiHash: apiHash,
-            sessionPath: account.SessionPath,
-            sessionKey: sessionKey,
-            phoneNumber: account.Phone,
-            userId: account.UserId > 0 ? account.UserId : null);
-
-        try
-        {
-            await ExecuteTelegramRequestAsync(
-                accountId,
-                "连接 Telegram",
-                () => client.ConnectAsync(),
-                cancellationToken,
-                resetClientOnTimeout: true);
+            await _clientPool.RemoveClientAsync(accountId);
             cancellationToken.ThrowIfCancellationRequested();
-            if (client.User == null && (client.UserId != 0 || account.UserId != 0))
+
+            var client = await _clientPool.GetOrCreateClientAsync(
+                accountId: accountId,
+                apiId: apiId,
+                apiHash: apiHash,
+                sessionPath: account.SessionPath,
+                sessionKey: sessionKey,
+                phoneNumber: account.Phone,
+                userId: account.UserId > 0 ? account.UserId : null);
+
+            try
             {
                 await ExecuteTelegramRequestAsync(
                     accountId,
-                    "恢复 Telegram 登录状态",
-                    () => client.LoginUserIfNeeded(reloginOnFailedResume: false),
+                    "杩炴帴 Telegram",
+                    () => client.ConnectAsync(),
                     cancellationToken,
                     resetClientOnTimeout: true);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (client.User == null && (client.UserId != 0 || account.UserId != 0))
+                {
+                    await ExecuteTelegramRequestAsync(
+                        accountId,
+                        "鎭㈠ Telegram 鐧诲綍鐘舵€?",
+                        () => client.LoginUserIfNeeded(reloginOnFailedResume: false),
+                        cancellationToken,
+                        resetClientOnTimeout: true);
+                }
+
+                if (client.User == null)
+                    throw new InvalidOperationException("璐﹀彿鏈櫥褰曟垨 session 宸插け鏁堬紝璇烽噸鏂扮櫥褰曠敓鎴愭柊鐨?session");
+
+                return client;
             }
-        }
-        catch (Exception ex)
-        {
-            if (LooksLikeSessionApiMismatchOrCorrupted(ex))
+            catch (Exception ex) when (attempt < 2 && IsRetryableTelegramBootstrapException(ex, cancellationToken))
             {
-                throw new InvalidOperationException(
-                    "该账号的 Session 文件无法解析（通常是 ApiId/ApiHash 与生成 session 时不一致，或 session 文件已损坏）。" +
-                    "请到【账号-手机号登录】重新登录生成新的 sessions/*.session 后再试。",
-                    ex);
+                lastError = ex;
+                _logger.LogWarning(ex, "Telegram client bootstrap failed for account {AccountId} on attempt {Attempt}, retrying once", accountId, attempt);
+                await _clientPool.RemoveClientAsync(accountId);
+                await Task.Delay(TimeSpan.FromMilliseconds(1200), cancellationToken);
             }
+            catch (Exception ex)
+            {
+                if (LooksLikeSessionApiMismatchOrCorrupted(ex))
+                {
+                    throw new InvalidOperationException(
+                        "璇ヨ处鍙风殑 Session 鏂囦欢鏃犳硶瑙ｆ瀽锛堥€氬父鏄?ApiId/ApiHash 涓庣敓鎴?session 鏃朵笉涓€鑷达紝鎴?session 鏂囦欢宸叉崯鍧忥級銆? +
+                        "璇峰埌銆愯处鍙?鎵嬫満鍙风櫥褰曘€戦噸鏂扮櫥褰曠敓鎴愭柊鐨?sessions/*.session 鍚庡啀璇曘€?",
+                        ex);
+                }
 
-            throw new InvalidOperationException($"Telegram 会话加载失败：{ex.Message}", ex);
+                throw new InvalidOperationException($"Telegram 浼氳瘽鍔犺浇澶辫触锛歿ex.Message}", ex);
+            }
         }
 
-        if (client.User == null)
-            throw new InvalidOperationException("账号未登录或 session 已失效，请重新登录生成新的 session");
+        throw new InvalidOperationException($"Telegram 浼氳瘽鍔犺浇澶辫触锛歿lastError?.Message}");
+    }
 
-        return client;
+    private static bool IsRetryableTelegramBootstrapException(Exception ex, CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested)
+            return false;
+
+        if (ex is TimeoutException)
+            return true;
+
+        if (ex is ObjectDisposedException disposed && disposed.ObjectName?.Contains("SemaphoreSlim", StringComparison.OrdinalIgnoreCase) == true)
+            return true;
+
+        if (ex is OperationCanceledException)
+            return true;
+
+        var message = ex.ToString();
+        return message.Contains("A task was canceled", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("SemaphoreSlim", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("Cannot access a disposed object", StringComparison.OrdinalIgnoreCase);
     }
 
     private TimeSpan GetTelegramRequestTimeout()
@@ -2095,7 +2095,7 @@ public class AccountTelegramToolsService
             if (resetClientOnTimeout)
                 await _clientPool.RemoveClientAsync(accountId);
 
-            throw new TimeoutException($"Telegram 请求超时：{operation} 超过 {timeout.TotalSeconds:0} 秒，可能是 Session 失效、账号受限、网络异常或代理异常");
+            throw new TimeoutException($"Telegram 璇锋眰瓒呮椂锛歿operation} 瓒呰繃 {timeout.TotalSeconds:0} 绉掞紝鍙兘鏄?Session 澶辨晥銆佽处鍙峰彈闄愩€佺綉缁滃紓甯告垨浠ｇ悊寮傚父");
         }
     }
 
@@ -2123,7 +2123,7 @@ public class AccountTelegramToolsService
             if (resetClientOnTimeout)
                 await _clientPool.RemoveClientAsync(accountId);
 
-            throw new TimeoutException($"Telegram 请求超时：{operation} 超过 {timeout.TotalSeconds:0} 秒，可能是 Session 失效、账号受限、网络异常或代理异常");
+            throw new TimeoutException($"Telegram 璇锋眰瓒呮椂锛歿operation} 瓒呰繃 {timeout.TotalSeconds:0} 绉掞紝鍙兘鏄?Session 澶辨晥銆佽处鍙峰彈闄愩€佺綉缁滃紓甯告垨浠ｇ悊寮傚父");
         }
     }
 
@@ -2133,7 +2133,7 @@ public class AccountTelegramToolsService
             return globalApiId;
         if (account.ApiId > 0)
             return account.ApiId;
-        throw new InvalidOperationException("未配置全局 ApiId，且账号缺少 ApiId");
+        throw new InvalidOperationException("鏈厤缃叏灞€ ApiId锛屼笖璐﹀彿缂哄皯 ApiId");
     }
 
     private string ResolveApiHash(Account account)
@@ -2143,7 +2143,7 @@ public class AccountTelegramToolsService
             return global.Trim();
         if (!string.IsNullOrWhiteSpace(account.ApiHash))
             return account.ApiHash.Trim();
-        throw new InvalidOperationException("未配置全局 ApiHash，且账号缺少 ApiHash");
+        throw new InvalidOperationException("鏈厤缃叏灞€ ApiHash锛屼笖璐﹀彿缂哄皯 ApiHash");
     }
 
     private static string ResolveSessionKey(Account account, string apiHash)
@@ -2169,14 +2169,13 @@ public class AccountTelegramToolsService
         if (profile.IsFake) flags.Add("Fake");
         if (profile.IsDeleted) flags.Add("Deleted");
 
-        var flagText = flags.Count == 0 ? "无" : string.Join(", ", flags);
-        return $"昵称：{profile.DisplayName}；用户名：{profile.Username ?? "-"}；UserId：{profile.UserId}；标记：{flagText}";
+        var flagText = flags.Count == 0 ? "鏃? : string.Join(", ", flags);
+        return $"鏄电О锛歿profile.DisplayName}锛涚敤鎴峰悕锛歿profile.Username ?? "-"}锛沀serId锛歿profile.UserId}锛涙爣璁帮細{flagText}";
     }
 
     private async Task<CreateChannelProbeResult> ProbeCreateChannelCapabilityAsync(Client client, int accountId, CancellationToken cancellationToken = default)
     {
-        // 注意：这是“深度探测”，会创建并删除一个测试频道。
-        var title = $"tp-check-{DateTime.UtcNow:MMddHHmmss}";
+        // 娉ㄦ剰锛氳繖鏄€滄繁搴︽帰娴嬧€濓紝浼氬垱寤哄苟鍒犻櫎涓€涓祴璇曢閬撱€?        var title = $"tp-check-{DateTime.UtcNow:MMddHHmmss}";
         const string about = "Telegram Panel create-channel probe (auto delete)";
 
         try
@@ -2188,29 +2187,28 @@ public class AccountTelegramToolsService
             {
                 updates = await ExecuteTelegramRequestAsync(
                     accountId,
-                    "创建测试频道探测账号状态",
+                    "鍒涘缓娴嬭瘯棰戦亾鎺㈡祴璐﹀彿鐘舵€?,
                     () => client.Channels_CreateChannel(title: title, about: about, broadcast: true),
                     cancellationToken,
                     resetClientOnTimeout: true);
             }
             catch (RpcException ex) when (ex.Code == 420 && string.Equals(ex.Message, "FROZEN_METHOD_INVALID", StringComparison.OrdinalIgnoreCase))
             {
-                return new CreateChannelProbeResult(false, true, "账号/ApiId 受限：Telegram 返回 FROZEN_METHOD_INVALID（创建频道接口被冻结）");
+                return new CreateChannelProbeResult(false, true, "璐﹀彿/ApiId 鍙楅檺锛歍elegram 杩斿洖 FROZEN_METHOD_INVALID锛堝垱寤洪閬撴帴鍙ｈ鍐荤粨锛?);
             }
 
             cancellationToken.ThrowIfCancellationRequested();
 
             var channel = updates.Chats.Values.OfType<TL.Channel>().FirstOrDefault();
             if (channel == null)
-                return new CreateChannelProbeResult(false, false, "创建测试频道失败：未返回 Channel");
+                return new CreateChannelProbeResult(false, false, "鍒涘缓娴嬭瘯棰戦亾澶辫触锛氭湭杩斿洖 Channel");
 
             try
             {
-                // 立即删除，避免留下垃圾频道
-                var input = new InputChannel(channel.id, channel.access_hash);
+                // 绔嬪嵆鍒犻櫎锛岄伩鍏嶇暀涓嬪瀮鍦鹃閬?                var input = new InputChannel(channel.id, channel.access_hash);
                 await ExecuteTelegramRequestAsync(
                     accountId,
-                    $"删除测试频道({channel.id})",
+                    $"鍒犻櫎娴嬭瘯棰戦亾({channel.id})",
                     () => client.Channels_DeleteChannel(input),
                     cancellationToken,
                     resetClientOnTimeout: false);
@@ -2218,14 +2216,14 @@ public class AccountTelegramToolsService
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Probe channel created but failed to delete (account {AccountId}, channel {ChannelId})", accountId, channel.id);
-                return new CreateChannelProbeResult(false, false, $"创建测试频道成功，但删除失败：{ex.Message}（请手动删除频道：{title}）");
+                return new CreateChannelProbeResult(false, false, $"鍒涘缓娴嬭瘯棰戦亾鎴愬姛锛屼絾鍒犻櫎澶辫触锛歿ex.Message}锛堣鎵嬪姩鍒犻櫎棰戦亾锛歿title}锛?);
             }
 
-            return new CreateChannelProbeResult(true, false, "可用");
+            return new CreateChannelProbeResult(true, false, "鍙敤");
         }
         catch (Exception ex)
         {
-            var msg = ex.Message ?? "未知错误";
+            var msg = ex.Message ?? "鏈煡閿欒";
             return new CreateChannelProbeResult(false, false, msg);
         }
     }
@@ -2233,8 +2231,7 @@ public class AccountTelegramToolsService
     private sealed record CreateChannelProbeResult(bool Success, bool IsFrozen, string Message);
 
     /// <summary>
-    /// 将 Telegram 异常映射为可读的摘要和详情。
-    /// </summary>
+    /// 灏?Telegram 寮傚父鏄犲皠涓哄彲璇荤殑鎽樿鍜岃鎯呫€?    /// </summary>
     private static bool IsBotCallbackTimeout(Exception ex)
     {
         var msg = ex.Message ?? string.Empty;
@@ -2246,71 +2243,71 @@ public class AccountTelegramToolsService
         var msg = ex.Message ?? string.Empty;
 
         if (ex is TimeoutException
-            || msg.Contains("请求超时", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("璇锋眰瓒呮椂", StringComparison.OrdinalIgnoreCase)
             || msg.Contains("timed out", StringComparison.OrdinalIgnoreCase)
             || msg.Contains("timeout", StringComparison.OrdinalIgnoreCase))
-            return ("请求超时", msg);
+            return ("璇锋眰瓒呮椂", msg);
 
         if (msg.Contains("EMAIL_HASH_EXPIRED", StringComparison.OrdinalIgnoreCase))
             return (
-                "邮箱验证码已过期（EMAIL_HASH_EXPIRED）",
-                "请点击“重发验证码”，并使用最新邮件中的验证码。" + Environment.NewLine + msg);
+                "閭楠岃瘉鐮佸凡杩囨湡锛圗MAIL_HASH_EXPIRED锛?,
+                "璇风偣鍑烩€滈噸鍙戦獙璇佺爜鈥濓紝骞朵娇鐢ㄦ渶鏂伴偖浠朵腑鐨勯獙璇佺爜銆? + Environment.NewLine + msg);
 
         if (msg.Contains("EMAIL_NOT_SETUP", StringComparison.OrdinalIgnoreCase))
-            return ("登录邮箱未启用（EMAIL_NOT_SETUP）", "该账号未处于可设置/可变更登录邮箱的状态（通常需要登录流程触发设置）。" + Environment.NewLine + msg);
+            return ("鐧诲綍閭鏈惎鐢紙EMAIL_NOT_SETUP锛?, "璇ヨ处鍙锋湭澶勪簬鍙缃?鍙彉鏇寸櫥褰曢偖绠辩殑鐘舵€侊紙閫氬父闇€瑕佺櫥褰曟祦绋嬭Е鍙戣缃級銆? + Environment.NewLine + msg);
 
         if (msg.Contains("EMAIL_UNCONFIRMED", StringComparison.OrdinalIgnoreCase))
         {
             var m = System.Text.RegularExpressions.Regex.Match(msg, "(EMAIL_UNCONFIRMED(?:_[A-Z0-9]+)?)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             var code = m.Success ? m.Groups[1].Value.ToUpperInvariant() : "EMAIL_UNCONFIRMED";
             return (
-                $"邮箱未确认（{code}）",
-                "请在面板输入邮箱收到的验证码进行确认；如提示过期请重发并使用最新验证码。" + Environment.NewLine + msg);
+                $"閭鏈‘璁わ紙{code}锛?,
+                "璇峰湪闈㈡澘杈撳叆閭鏀跺埌鐨勯獙璇佺爜杩涜纭锛涘鎻愮ず杩囨湡璇烽噸鍙戝苟浣跨敤鏈€鏂伴獙璇佺爜銆? + Environment.NewLine + msg);
         }
 
         if (msg.Contains("EMAIL_TOKEN_INVALID", StringComparison.OrdinalIgnoreCase))
-            return ("邮箱验证码错误（EMAIL_TOKEN_INVALID）", "验证码不正确或不是最新验证码。请点击“重发验证码”，并使用最新邮件中的验证码。" + Environment.NewLine + msg);
+            return ("閭楠岃瘉鐮侀敊璇紙EMAIL_TOKEN_INVALID锛?, "楠岃瘉鐮佷笉姝ｇ‘鎴栦笉鏄渶鏂伴獙璇佺爜銆傝鐐瑰嚮鈥滈噸鍙戦獙璇佺爜鈥濓紝骞朵娇鐢ㄦ渶鏂伴偖浠朵腑鐨勯獙璇佺爜銆? + Environment.NewLine + msg);
 
         if (msg.Contains("EMAIL_INVALID", StringComparison.OrdinalIgnoreCase))
-            return ("邮箱无效（EMAIL_INVALID）", msg);
+            return ("閭鏃犳晥锛圗MAIL_INVALID锛?, msg);
 
         if (msg.Contains("EMAIL_NOT_ALLOWED", StringComparison.OrdinalIgnoreCase))
-            return ("邮箱不允许使用（EMAIL_NOT_ALLOWED）", msg);
+            return ("閭涓嶅厑璁镐娇鐢紙EMAIL_NOT_ALLOWED锛?, msg);
 
         if (msg.Contains("FROZEN_METHOD_INVALID", StringComparison.OrdinalIgnoreCase))
-            return ("账号被冻结（FROZEN_METHOD_INVALID）", "Telegram 提示该账号/ApiId 的某些接口被冻结（常见为创建频道接口）。" + Environment.NewLine + msg);
+            return ("璐﹀彿琚喕缁擄紙FROZEN_METHOD_INVALID锛?, "Telegram 鎻愮ず璇ヨ处鍙?ApiId 鐨勬煇浜涙帴鍙ｈ鍐荤粨锛堝父瑙佷负鍒涘缓棰戦亾鎺ュ彛锛夈€? + Environment.NewLine + msg);
 
         if (msg.Contains("FLOOD_WAIT", StringComparison.OrdinalIgnoreCase))
-            return ("触发限流（FLOOD_WAIT）", msg);
+            return ("瑙﹀彂闄愭祦锛團LOOD_WAIT锛?, msg);
 
         if (msg.Contains("CHANNEL_MONOFORUM_UNSUPPORTED", StringComparison.OrdinalIgnoreCase))
-            return ("群组接口不支持（CHANNEL_MONOFORUM_UNSUPPORTED）", msg);
+            return ("缇ょ粍鎺ュ彛涓嶆敮鎸侊紙CHANNEL_MONOFORUM_UNSUPPORTED锛?, msg);
 
         if (msg.Contains("AUTH_KEY_UNREGISTERED", StringComparison.OrdinalIgnoreCase))
-            return ("Session 失效（AUTH_KEY_UNREGISTERED）", msg);
+            return ("Session 澶辨晥锛圓UTH_KEY_UNREGISTERED锛?, msg);
 
         if (msg.Contains("AUTH_KEY_DUPLICATED", StringComparison.OrdinalIgnoreCase))
-            return ("Session 冲突（AUTH_KEY_DUPLICATED）", "该 Session 可能在其他设备/应用上同时使用，导致密钥冲突。" + Environment.NewLine + msg);
+            return ("Session 鍐茬獊锛圓UTH_KEY_DUPLICATED锛?, "璇?Session 鍙兘鍦ㄥ叾浠栬澶?搴旂敤涓婂悓鏃朵娇鐢紝瀵艰嚧瀵嗛挜鍐茬獊銆? + Environment.NewLine + msg);
 
         if (msg.Contains("SESSION_REVOKED", StringComparison.OrdinalIgnoreCase))
-            return ("Session 已被撤销（SESSION_REVOKED）", "该 Session 已被注销或撤销，需要重新登录。" + Environment.NewLine + msg);
+            return ("Session 宸茶鎾ら攢锛圫ESSION_REVOKED锛?, "璇?Session 宸茶娉ㄩ攢鎴栨挙閿€锛岄渶瑕侀噸鏂扮櫥褰曘€? + Environment.NewLine + msg);
 
         if (msg.Contains("SESSION_PASSWORD_NEEDED", StringComparison.OrdinalIgnoreCase))
-            return ("需要两步验证密码（SESSION_PASSWORD_NEEDED）", msg);
+            return ("闇€瑕佷袱姝ラ獙璇佸瘑鐮侊紙SESSION_PASSWORD_NEEDED锛?, msg);
 
         if (msg.Contains("CODE_INVALID", StringComparison.OrdinalIgnoreCase))
-            return ("验证码错误（CODE_INVALID）", "验证码不正确或不是最新验证码。请点击“重发验证码”，并使用最新邮件中的验证码。" + Environment.NewLine + msg);
+            return ("楠岃瘉鐮侀敊璇紙CODE_INVALID锛?, "楠岃瘉鐮佷笉姝ｇ‘鎴栦笉鏄渶鏂伴獙璇佺爜銆傝鐐瑰嚮鈥滈噸鍙戦獙璇佺爜鈥濓紝骞朵娇鐢ㄦ渶鏂伴偖浠朵腑鐨勯獙璇佺爜銆? + Environment.NewLine + msg);
 
         if (msg.Contains("PHOTO_FILE_MISSING", StringComparison.OrdinalIgnoreCase))
-            return ("头像上传失败（PHOTO_FILE_MISSING）", msg);
+            return ("澶村儚涓婁紶澶辫触锛圥HOTO_FILE_MISSING锛?, msg);
 
         if (msg.Contains("PHONE_NUMBER_BANNED", StringComparison.OrdinalIgnoreCase)
             || msg.Contains("USER_DEACTIVATED_BAN", StringComparison.OrdinalIgnoreCase))
-            return ("账号被封禁/停用", msg);
+            return ("璐﹀彿琚皝绂?鍋滅敤", msg);
 
         if (msg.Contains("Can't read session block", StringComparison.OrdinalIgnoreCase))
-            return ("Session 无法读取（ApiHash/Key 不匹配或损坏）", msg);
+            return ("Session 鏃犳硶璇诲彇锛圓piHash/Key 涓嶅尮閰嶆垨鎹熷潖锛?, msg);
 
-        return ("连接失败", msg);
+        return ("杩炴帴澶辫触", msg);
     }
 }
